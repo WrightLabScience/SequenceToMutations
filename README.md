@@ -27,9 +27,9 @@ Each step in more detail, including inputs, outputs, and comments:
 
 	b. Outputs: 
 
-		i. `[sample_name]_trimmed.fastq.gz` files, name each file according to whether the reads came from an evolved lineage or an ancestor strain (see examples)
+		*`[sample_name]_trimmed.fastq.gz` files, name each file according to whether the reads came from an evolved lineage or an ancestor strain (see examples)
 		
-		ii. 'assemble_job_map.txt' containing the file names for the trimmed reads of ancestor strains for assembly (next step)
+		* 'assemble_job_map.txt' containing the file names for the trimmed reads of ancestor strains for assembly (next step)
 	
 	c. Comments: Run locally, use `R_scripts/TrimRawReadsByQuality.R` script
 
