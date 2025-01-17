@@ -1,0 +1,1234 @@
+
+R version 4.3.1 (2023-06-16) -- "Beagle Scouts"
+Copyright (C) 2023 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> ##
+> ##
+> ## AUTHORS
+> ##
+> ## Jeffrey E. Barrick <jeffrey.e.barrick@gmail.com>
+> ##
+> ## LICENSE AND COPYRIGHT
+> ##
+> ## Copyright (c) 2008-2010 Michigan State University
+> ## Copyright (c) 2011-2022 The University of Texas at Austin
+> ##
+> ## breseq is free software; you can redistribute it and/or modify it under the
+> ## terms the GNU General Public License as published by the Free Software
+> ## Foundation; either version 1, or (at your option) any later version.
+> ##
+> ##
+> 
+> ## Arguments:
+> ##   distribution_file=/path/to/input 
+> ##   plot_file=/path/to/output 
+> ##   deletion_propagation_pr_cutoff=float
+> ##   plot_poisson=0 or 1
+> ##   pdf_output=0 or 1
+> 
+> ## Returns these values printed out to output log
+> ## 
+> ##  1. print(nb_fit_size); # 0 if fit failed
+> ##  2. print(nb_fit_mu);   # 0 if fit failed
+> ##  3. print(m)q
+> ##  4. print(v)
+> ##  5. print(D)
+> ##  6. print(deletion_propagation_coverage)
+> ##     -1 if it was <1 after fitting (implying reference sequence is deleted)
+> ##
+> 
+> plot_poisson = 0;
+> pdf_output = 1;
+> 
+> this.print.level = 0
+> #this.print.level = 2
+> 
+> for (e in commandArgs(TRUE)) {
++   ta = strsplit(e,"=",fixed=TRUE)[[1]]
++   if(length(ta)>1) {
++     temp = ta[2]
++     assign(ta[1],temp)
++     cat("assigned ",ta[1]," the value of |",temp,"|\n")
++   } else {
++     assign(ta[[1]][1],TRUE)
++     cat("assigned ",ta[1]," the value of TRUE\n")
++   }
++ }
+assigned  distribution_file  the value of | p3_out/07_error_calibration/53.unique_only_coverage_distribution.tab |
+assigned  plot_file  the value of | p3_out/output/calibration/53.unique_coverage.pdf |
+assigned  deletion_propagation_pr_cutoff  the value of | 0.000823666 |
+> 
+> deletion_propagation_pr_cutoff = as.numeric(deletion_propagation_pr_cutoff);
+> 
+> ## initialize values to be filled in
+> nb_fit_mu = 0
+> nb_fit_size = 0
+> m = 0
+> v = 0
+> D = 0
+> deletion_propagation_coverage = -1
+> 
+> min_fraction_included_in_nb_fit = 0.01
+> 
+> #load data
+> X<-read.table(distribution_file, header=T)
+> 
+> #table might be empty
+> if (nrow(X) == 0)
++ {
++   #print out statistics
++   
++   print(nb_fit_size);
++   print(nb_fit_mu);
++   
++   print(m)
++   print(v)
++   print(D)
++   
++   print(deletion_propagation_coverage)
++   
++   q()
++ }
+> 
+> #create the distribution vector and fit
+> Y<-rep(X$coverage, X$n)
+> m<-mean(Y)
+> v<-var(Y)
+> D<-v/m
+> 
+> ###
+> ## Smooth the distribution with a moving average window of size 5
+> ## so that we can more reliably find it's maximum value
+> ###
+> 
+> ma5 = c(1, 1, 1, 1, 1)/5;
+> 
+> ## filtering fails if there are too few points
+> if (nrow(X) >= 5) {
++   X$ma = filter(X$n, ma5)
++ } else {
++ 	X$ma = X$n
++ }
+> 
+> i<-0
+> max_n <- 0;
+> min_i <- max( trunc(m/4), 1 ); #prevents zero for pathological distributions
+> max_i <- i;
+> for (i in min_i:length(X$ma))
++ {		
++   #cat(i, "\n")
++ 	if (!is.na(X$ma[i]) && (X$ma[i] > max_n))
++ 	{
++ 		max_n = X$ma[i];
++ 		max_i = i;
++ 	}
++ }
+> 
+> ##
+> # Censor data on the right and left of the maximum
+> ##
+> 
+> start_i = max(floor(max_i*0.5), 1);
+> end_i = min(ceiling(max_i*1.5), length(X$ma));
+> 
+> if (start_i == end_i)
++ {
++   print(nb_fit_size);
++   print(nb_fit_mu);
++   
++   print(m)
++   print(v)
++   print(D)
++   
++   print(deletion_propagation_coverage)
++   
++   q()
++ }
+> 
+> cat("Fitting from coverage of ", start_i, " to ", end_i, ".\n", sep="")
+Fitting from coverage of 36 to 110.
+> 
+> ##
+> # Coarse grain so that we are only fitting a number of bins that is 1000-2000
+> #
+> # The later adjustment for doing the fits this way is to multiply the means
+> # of the negative binomial and poisson distributions by the binning number.
+> # (The size parameter of the negative binomial doesn't need to be adjusted.)
+> ##
+> 
+> 
+> num_per_bin = trunc((end_i - start_i) / 1000)
+> 
+> if (num_per_bin > 1) 
++ {
++   cat("Coarse-graining for fits\n")
++   start_i_for_fits = trunc(start_i/num_per_bin)
++   end_i_for_fits = ceiling(end_i/num_per_bin)
++   num_bins = end_i - start_i  + 1
++   cat("Fitting from coverage in adjusted bins ", start_i_for_fits, " to ", end_i_for_fits, ".\n", sep="")
++   cat("Number of bins ", num_bins, ". Each bin has ", num_per_bin, " coverage values.\n", sep="")
++ 
++   # Create a new vector where we've added together values in bins
++   X.for.fits = vector("double", end_i_for_fits)
++   for (i in start_i_for_fits:end_i_for_fits)
++   {
++     for (j in 1:num_per_bin)
++     {
++       if (i*num_per_bin+j <= length(X$n))
++       {
++         X.for.fits[i] = X.for.fits[i] + X$n[i*num_per_bin+j]
++       }
++     }
++   }
++ 
++ } else {
++   ## AVOID num_per_bin equalling zero!!
++   X.for.fits = X$n[1:end_i]
++   num_per_bin = 1
++   start_i_for_fits = start_i
++   end_i_for_fits = end_i
++ }
+> 
+> 
+> ##
+> # Now perform negative binomial fitting to the censored data
+> ##
+> 
+> inner_total<-0;
+> for (i in start_i_for_fits:end_i_for_fits)
++ {
++ 	inner_total = inner_total + X.for.fits[i]; 
++ }
+> # Yes: it's correct to use X here because we want the overall total total
+> total_total<-sum(X$n);
+> 
+> ## let's preconstruct these for speed
+> dist = vector("double", end_i_for_fits)
+> 
+> f_nb <- function(par) {
++ 
++ 	mu = par[1];
++ 	size = par[2];
++ 
++   if ((mu <= 0) || (size <= 0))
++   {
++     return(0);
++   }
++   
++   cat(start_i_for_fits, " ", end_i_for_fits, "\n");
++   cat(mu, " ", size, "\n");
++   
++ 	dist<-c()
++ 	total <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{	
++ 		dist[i] <- dnbinom(i, size=size, mu=mu);
++ 		total <- total + dist[i] 
++ 	}
++ 	#print (mu, size)
++ 
++  	l <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{
++ 		l <- l + ((X.for.fits[i]/inner_total)-(dist[i]/total))^2;
++ 	}
++ 	return(l);
++ }
+> 
+> 
+> 
+> ## Fit negative binomial 
+> ## - allow fit to fail and set all params to zero/empty if that is the case
+> nb_fit = NULL
+> ## as.numeric prevents overflow in sums involving integers
+> mean_estimate = sum((as.numeric(1:end_i_for_fits)*as.numeric(X.for.fits)))/sum(as.numeric(X.for.fits))
+> 
+> nb_fit_mu = -1
+> nb_fit_size = -1
+> try_size = 100000
+> try_means_index = 1
+> #This is a list of different means to test <-  sometimes the actual mean doesn't lead to a fit
+> try_means = c(mean_estimate, 
++               end_i_for_fits, 
++               start_i_for_fits, 
++               1*(end_i_for_fits + start_i_for_fits)/4,
++               2*(end_i_for_fits + start_i_for_fits)/4,
++               3*(end_i_for_fits + start_i_for_fits)/4
++               )
+>               
+>               
+> nb_fit = c()
+> 
+> while ( ((nb_fit_mu < 0) || (nb_fit_size < 0) || (nb_fit$code != 1)) && (try_size > 0.001) && (try_means_index <= length(try_means)))
++ {
++   try_size = try_size / 10
++   try_mean = try_means[try_means_index]
++ 
++   ## SIZE ESTIMATE from the censored data can be negative, so try various values instead
++   cat("Try Mean: ", try_mean, " Size: ", try_size, "\n")
++ 
++   try( suppressWarnings(nb_fit<-nlm(f_nb, c(try_mean, try_size), iterlim=1000, print.level=this.print.level)) )
++ 
++   nb_fit_mu = nb_fit$estimate[1];
++   nb_fit_size = nb_fit$estimate[2];
++ 
++   cat("Fit Mean: ", nb_fit_mu, " Size: ", nb_fit_size, " Code: ", nb_fit$code, "\n")
++   
++   if (try_size <= 0.001) {
++     try_size = 100000
++     try_means_index = try_means_index + 1
++   }
++ }
+Try Mean:  70.4483  Size:  10000 
+36   110 
+70.4483   10000 
+36   110 
+70.4483   10000 
+36   110 
+70.44837   10000 
+36   110 
+70.4483   10000.01 
+36   110 
+70.44799   10000 
+36   110 
+70.44806   10000 
+36   110 
+70.44799   10000.01 
+36   110 
+67.27878   10000 
+36   110 
+67.27885   10000 
+36   110 
+67.27878   10000.01 
+36   110 
+67.70567   10000 
+36   110 
+67.70574   10000 
+36   110 
+67.70567   10000.01 
+36   110 
+67.6664   10000 
+36   110 
+67.66647   10000 
+36   110 
+67.6664   10000.01 
+36   110 
+67.66596   10000 
+36   110 
+67.66603   10000 
+36   110 
+67.66596   10000.01 
+36   110 
+67.66595   9999.999 
+36   110 
+67.66602   9999.999 
+36   110 
+67.66595   10000.01 
+Fit Mean:  67.66595  Size:  9999.999  Code:  2 
+Try Mean:  70.4483  Size:  1000 
+36   110 
+70.4483   1000 
+36   110 
+70.4483   1000 
+36   110 
+70.44837   1000 
+36   110 
+70.4483   1000.001 
+36   110 
+70.44801   1000 
+36   110 
+70.44808   1000 
+36   110 
+70.44801   1000.001 
+36   110 
+67.41461   999.983 
+36   110 
+67.41468   999.983 
+36   110 
+67.41461   999.984 
+36   110 
+67.82829   999.9769 
+36   110 
+67.82835   999.9769 
+36   110 
+67.82829   999.9779 
+36   110 
+67.78871   999.9692 
+36   110 
+67.78878   999.9692 
+36   110 
+67.78871   999.9702 
+36   110 
+67.78684   999.9602 
+36   110 
+67.7869   999.9602 
+36   110 
+67.78684   999.9612 
+36   110 
+67.75661   999.6671 
+36   110 
+67.75668   999.6671 
+36   110 
+67.75661   999.6681 
+36   110 
+67.7245   999.0499 
+36   110 
+67.72457   999.0499 
+36   110 
+67.7245   999.0509 
+36   110 
+67.662   996.9454 
+36   110 
+67.66207   996.9454 
+36   110 
+67.662   996.9464 
+36   110 
+67.56631   991.4396 
+36   110 
+67.56638   991.4396 
+36   110 
+67.56631   991.4406 
+36   110 
+67.40189   975.8449 
+36   110 
+67.40196   975.8449 
+36   110 
+67.40189   975.8459 
+36   110 
+67.10929   931.8176 
+36   110 
+67.10936   931.8176 
+36   110 
+67.10929   931.8185 
+36   110 
+66.44585   786.7884 
+36   110 
+66.44591   786.7884 
+36   110 
+66.44585   786.7892 
+Fit Mean:  59.07917  Size:  -1051.707  Code:  1 
+Try Mean:  70.4483  Size:  100 
+36   110 
+70.4483   100 
+36   110 
+70.4483   100 
+36   110 
+70.44837   100 
+36   110 
+70.4483   100.0001 
+36   110 
+70.44818   99.99997 
+36   110 
+70.44825   99.99997 
+36   110 
+70.44818   100.0001 
+36   110 
+68.80638   99.0602 
+36   110 
+68.80645   99.0602 
+36   110 
+68.80638   99.06029 
+36   110 
+68.82414   98.55178 
+36   110 
+68.8242   98.55178 
+36   110 
+68.82414   98.55188 
+36   110 
+68.82836   98.03267 
+36   110 
+68.82843   98.03267 
+36   110 
+68.82836   98.03277 
+36   110 
+68.83365   97.51113 
+36   110 
+68.83372   97.51113 
+36   110 
+68.83365   97.51123 
+36   110 
+68.83894   96.98654 
+36   110 
+68.83901   96.98654 
+36   110 
+68.83894   96.98663 
+36   110 
+68.84431   96.45888 
+36   110 
+68.84438   96.45888 
+36   110 
+68.84431   96.45897 
+36   110 
+68.84977   95.92811 
+36   110 
+68.84983   95.92811 
+36   110 
+68.84977   95.92821 
+36   110 
+68.8553   95.3942 
+36   110 
+68.85537   95.3942 
+36   110 
+68.8553   95.3943 
+36   110 
+68.86091   94.85711 
+36   110 
+68.86098   94.85711 
+36   110 
+68.86091   94.8572 
+36   110 
+68.86661   94.31678 
+36   110 
+68.86668   94.31678 
+36   110 
+68.86661   94.31687 
+36   110 
+68.8724   93.77318 
+36   110 
+68.87247   93.77318 
+36   110 
+68.8724   93.77328 
+36   110 
+68.87828   93.22627 
+36   110 
+68.87835   93.22627 
+36   110 
+68.87828   93.22636 
+36   110 
+68.88424   92.67599 
+36   110 
+68.88431   92.67599 
+36   110 
+68.88424   92.67608 
+36   110 
+68.8903   92.1223 
+36   110 
+68.89037   92.1223 
+36   110 
+68.8903   92.1224 
+36   110 
+68.89646   91.56516 
+36   110 
+68.89653   91.56516 
+36   110 
+68.89646   91.56526 
+36   110 
+68.90271   91.00452 
+36   110 
+68.90278   91.00452 
+36   110 
+68.90271   91.00462 
+36   110 
+68.90906   90.44033 
+36   110 
+68.90913   90.44033 
+36   110 
+68.90906   90.44042 
+36   110 
+68.91552   89.87254 
+36   110 
+68.91559   89.87254 
+36   110 
+68.91552   89.87263 
+36   110 
+68.92208   89.30111 
+36   110 
+68.92215   89.30111 
+36   110 
+68.92208   89.3012 
+36   110 
+68.92876   88.72597 
+36   110 
+68.92882   88.72597 
+36   110 
+68.92876   88.72606 
+36   110 
+68.93554   88.14708 
+36   110 
+68.93561   88.14708 
+36   110 
+68.93554   88.14717 
+36   110 
+68.94243   87.56439 
+36   110 
+68.9425   87.56439 
+36   110 
+68.94243   87.56448 
+36   110 
+68.94945   86.97784 
+36   110 
+68.94952   86.97784 
+36   110 
+68.94945   86.97793 
+36   110 
+68.95658   86.38738 
+36   110 
+68.95665   86.38738 
+36   110 
+68.95658   86.38747 
+36   110 
+68.96384   85.79296 
+36   110 
+68.96391   85.79296 
+36   110 
+68.96384   85.79304 
+36   110 
+68.97123   85.19451 
+36   110 
+68.9713   85.19451 
+36   110 
+68.97123   85.1946 
+36   110 
+68.97875   84.59198 
+36   110 
+68.97882   84.59198 
+36   110 
+68.97875   84.59207 
+36   110 
+68.9864   83.98532 
+36   110 
+68.98647   83.98532 
+36   110 
+68.9864   83.9854 
+36   110 
+68.9942   83.37446 
+36   110 
+68.99426   83.37446 
+36   110 
+68.9942   83.37455 
+36   110 
+69.00213   82.75935 
+36   110 
+69.0022   82.75935 
+36   110 
+69.00213   82.75943 
+36   110 
+69.01021   82.13992 
+36   110 
+69.01028   82.13992 
+36   110 
+69.01021   82.14 
+36   110 
+69.01845   81.51612 
+36   110 
+69.01851   81.51612 
+36   110 
+69.01845   81.5162 
+36   110 
+69.02684   80.88788 
+36   110 
+69.0269   80.88788 
+36   110 
+69.02684   80.88796 
+36   110 
+69.03538   80.25514 
+36   110 
+69.03545   80.25514 
+36   110 
+69.03538   80.25522 
+36   110 
+69.0441   79.61783 
+36   110 
+69.04417   79.61783 
+36   110 
+69.0441   79.61791 
+36   110 
+69.05299   78.9759 
+36   110 
+69.05306   78.9759 
+36   110 
+69.05299   78.97598 
+36   110 
+69.06205   78.32928 
+36   110 
+69.06212   78.32928 
+36   110 
+69.06205   78.32936 
+36   110 
+69.07129   77.6779 
+36   110 
+69.07136   77.6779 
+36   110 
+69.07129   77.67798 
+36   110 
+69.08072   77.02169 
+36   110 
+69.08079   77.02169 
+36   110 
+69.08072   77.02177 
+36   110 
+69.09035   76.3606 
+36   110 
+69.09042   76.3606 
+36   110 
+69.09035   76.36068 
+36   110 
+69.10017   75.69456 
+36   110 
+69.10024   75.69456 
+36   110 
+69.10017   75.69463 
+36   110 
+69.1102   75.02349 
+36   110 
+69.11027   75.02349 
+36   110 
+69.1102   75.02356 
+36   110 
+69.12044   74.34733 
+36   110 
+69.12051   74.34733 
+36   110 
+69.12044   74.34741 
+36   110 
+69.1309   73.66602 
+36   110 
+69.13097   73.66602 
+36   110 
+69.1309   73.6661 
+36   110 
+69.14159   72.97949 
+36   110 
+69.14166   72.97949 
+36   110 
+69.14159   72.97956 
+36   110 
+69.15252   72.28767 
+36   110 
+69.15259   72.28767 
+36   110 
+69.15252   72.28775 
+36   110 
+69.16369   71.5905 
+36   110 
+69.16376   71.5905 
+36   110 
+69.16369   71.59057 
+36   110 
+69.17511   70.88791 
+36   110 
+69.17518   70.88791 
+36   110 
+69.17511   70.88799 
+36   110 
+69.18679   70.17985 
+36   110 
+69.18686   70.17985 
+36   110 
+69.18679   70.17992 
+36   110 
+69.19875   69.46623 
+36   110 
+69.19881   69.46623 
+36   110 
+69.19875   69.4663 
+36   110 
+69.21098   68.74702 
+36   110 
+69.21105   68.74702 
+36   110 
+69.21098   68.74708 
+36   110 
+69.2235   68.02213 
+36   110 
+69.22357   68.02213 
+36   110 
+69.2235   68.0222 
+36   110 
+69.23633   67.29153 
+36   110 
+69.2364   67.29153 
+36   110 
+69.23633   67.2916 
+36   110 
+69.24947   66.55516 
+36   110 
+69.24954   66.55516 
+36   110 
+69.24947   66.55523 
+36   110 
+69.26293   65.81296 
+36   110 
+69.263   65.81296 
+36   110 
+69.26293   65.81303 
+36   110 
+69.27673   65.06489 
+36   110 
+69.2768   65.06489 
+36   110 
+69.27673   65.06495 
+36   110 
+69.29088   64.3109 
+36   110 
+69.29095   64.3109 
+36   110 
+69.29088   64.31097 
+36   110 
+69.3054   63.55097 
+36   110 
+69.30546   63.55097 
+36   110 
+69.3054   63.55103 
+36   110 
+69.32029   62.78505 
+36   110 
+69.32036   62.78505 
+36   110 
+69.32029   62.78511 
+36   110 
+69.33558   62.01312 
+36   110 
+69.33565   62.01312 
+36   110 
+69.33558   62.01318 
+36   110 
+69.35128   61.23516 
+36   110 
+69.35135   61.23516 
+36   110 
+69.35128   61.23522 
+36   110 
+69.3674   60.45117 
+36   110 
+69.36747   60.45117 
+36   110 
+69.3674   60.45123 
+36   110 
+69.38398   59.66115 
+36   110 
+69.38405   59.66115 
+36   110 
+69.38398   59.66121 
+36   110 
+69.40101   58.8651 
+36   110 
+69.40108   58.8651 
+36   110 
+69.40101   58.86516 
+36   110 
+69.41854   58.06305 
+36   110 
+69.41861   58.06305 
+36   110 
+69.41854   58.06311 
+36   110 
+69.43656   57.25505 
+36   110 
+69.43663   57.25505 
+36   110 
+69.43656   57.25511 
+36   110 
+69.45512   56.44114 
+36   110 
+69.45519   56.44114 
+36   110 
+69.45512   56.44119 
+36   110 
+69.47423   55.62139 
+36   110 
+69.4743   55.62139 
+36   110 
+69.47423   55.62145 
+36   110 
+69.49391   54.7959 
+36   110 
+69.49398   54.7959 
+36   110 
+69.49391   54.79596 
+36   110 
+69.5142   53.96479 
+36   110 
+69.51427   53.96479 
+36   110 
+69.5142   53.96484 
+36   110 
+69.53512   53.12818 
+36   110 
+69.53519   53.12818 
+36   110 
+69.53512   53.12823 
+36   110 
+69.55671   52.28624 
+36   110 
+69.55678   52.28624 
+36   110 
+69.55671   52.2863 
+36   110 
+69.57898   51.43918 
+36   110 
+69.57905   51.43918 
+36   110 
+69.57898   51.43923 
+36   110 
+69.60198   50.58722 
+36   110 
+69.60205   50.58722 
+36   110 
+69.60198   50.58727 
+36   110 
+69.62574   49.73063 
+36   110 
+69.62581   49.73063 
+36   110 
+69.62574   49.73068 
+36   110 
+69.6503   48.86972 
+36   110 
+69.65037   48.86972 
+36   110 
+69.6503   48.86977 
+36   110 
+69.6757   48.00485 
+36   110 
+69.67577   48.00485 
+36   110 
+69.6757   48.0049 
+36   110 
+69.70198   47.13641 
+36   110 
+69.70205   47.13641 
+36   110 
+69.70198   47.13646 
+36   110 
+69.72917   46.26488 
+36   110 
+69.72924   46.26488 
+36   110 
+69.72917   46.26493 
+36   110 
+69.75734   45.39077 
+36   110 
+69.75741   45.39077 
+36   110 
+69.75734   45.39081 
+36   110 
+69.78652   44.51467 
+36   110 
+69.78659   44.51467 
+36   110 
+69.78652   44.51471 
+36   110 
+69.81677   43.63723 
+36   110 
+69.81684   43.63723 
+36   110 
+69.81677   43.63727 
+36   110 
+69.84813   42.75919 
+36   110 
+69.8482   42.75919 
+36   110 
+69.84813   42.75923 
+36   110 
+69.88067   41.88136 
+36   110 
+69.88074   41.88136 
+36   110 
+69.88067   41.8814 
+Fit Mean:  153.2285  Size:  -2122.82  Code:  1 
+Try Mean:  70.4483  Size:  10 
+36   110 
+70.4483   10 
+36   110 
+70.4483   10 
+36   110 
+70.44837   10 
+36   110 
+70.4483   10.00001 
+36   110 
+70.44842   10.00019 
+36   110 
+70.44849   10.00019 
+36   110 
+70.44842   10.0002 
+36   110 
+73.90301   15.15459 
+36   110 
+73.90308   15.15459 
+36   110 
+73.90301   15.15461 
+36   110 
+73.09202   16.38177 
+36   110 
+73.09209   16.38177 
+36   110 
+73.09202   16.38178 
+36   110 
+71.88551   18.8679 
+36   110 
+71.88558   18.8679 
+36   110 
+71.88551   18.86792 
+36   110 
+72.11533   19.14652 
+36   110 
+72.11541   19.14652 
+36   110 
+72.11533   19.14654 
+36   110 
+72.10912   19.28608 
+36   110 
+72.10919   19.28608 
+36   110 
+72.10912   19.2861 
+36   110 
+72.10603   19.2971 
+36   110 
+72.1061   19.2971 
+36   110 
+72.10603   19.29712 
+Fit Mean:  72.10603  Size:  19.2971  Code:  1 
+> 
+> cat("Final Fit Mean: ", nb_fit_mu, " Size: ", nb_fit_size, " Code: ", nb_fit$code, " Try Size: ", try_size, "\n")
+Final Fit Mean:  72.10603  Size:  19.2971  Code:  1  Try Size:  10 
+> 
+> ## Fit failed = reset parameters so graphing and output code can recognize this
+> if ((nb_fit_mu < 0) || (nb_fit_size < 0) || (nb_fit$code != 1))
++ {
++   nb_fit_mu = 0
++   nb_fit_size = 0
++ }
+> 
+> 
+> ## things can go wrong with fitting and we can still end up with invalid values
+> 
+> fit_nb = c()
+> included_fract = 0
+> if (nb_fit_mu > 0)
++ {
++   end_fract = pnbinom(end_i_for_fits, mu = nb_fit_mu, size=nb_fit_size)
++   start_fract = pnbinom(start_i_for_fits, mu = nb_fit_mu, size=nb_fit_size)
++   included_fract = end_fract-start_fract;
++ 
++   if (included_fract >= 0.01) {
++ 
++     ## Adjust so that we are back in full coords before making fit!!
++     if (num_per_bin > 1) 
++     {
++       nb_fit_mu = nb_fit_mu * num_per_bin
++     }
++     fit_nb = dnbinom(0:max(X$coverage), mu = nb_fit_mu, size=nb_fit_size)*inner_total/included_fract;
++   }
++ }
+> 
+> ## If an insufficient amount of fit was included, then invalidate it
+> if (included_fract < 0.01)
++ {
++   nb_fit_mu = 0
++   nb_fit_size = 0
++ }
+> 
+> f_p <- function(par) {
++ 
++   lambda = par[1];
++ 
++   if (lambda <= 0)
++   {
++     return(0);
++   }
++   
++ 	total <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{	
++     #cat(i, " ", lambda, "\n");
++ 		dist[i] <- dpois(i, lambda=lambda);
++ 		total <- total + dist[i] 
++ 	}
++ 	#print (total)
++ 
++  	l <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{
++ 		l <- l + ((X.for.fits[i]/inner_total)-(dist[i]/total))^2;
++ 	}
++ 	return(l);
++ }
+> 
+> 
+> ## Fit Poisson 
+> ## - allow fit to fail and set all params to zero/empty if that is the case
+> 
+> p_fit = NULL
+> try(suppressWarnings(p_fit<-nlm(f_p, c(m), print.level=this.print.level)))
+> 
+> fit_p = c()
+> if (!is.null(p_fit) && (p_fit$estimate[1] > 0))
++ {
++   #print (nb_fit$estimate[1])
++   p_fit_lambda = p_fit$estimate[1];
++   #print(0:max(X$coverage))
++ 
++   end_fract = ppois(end_i_for_fits, lambda = p_fit_lambda)
++   start_fract = ppois(start_i_for_fits, lambda = p_fit_lambda)
++   included_fract = end_fract-start_fract;
++ 
++   ## Adjust so that we are back in full coords before making fit!!
++   if (num_per_bin > 1) 
++   {
++     p_fit_lambda = p_fit_lambda * num_per_bin
++   }
++   fit_p<-dpois(0:max(X$coverage), lambda = p_fit_lambda)*inner_total/included_fract;
++ }
+> 
+> 
+> ## Graphing
+> ##
+> ## don't graph very high values with very little coverage
+> i<-max_i
+> while (i <= length(X$n) && X$n[i]>0.01*max_n)
++ {		
++ 	i <- i+1;
++ }
+> graph_end_i <-i
+> 
+> ## Ths leaves enough room to the right of the peak for the legend
+> graph_end_i = max(floor(2.2 * max_i), graph_end_i);
+> 
+> ## graphics settings
+> my_pch = 21
+> my_col = "black";
+> my_col_censored = "red";
+> 
+> if (pdf_output == 0) {
++   
++   ## bitmap() requires ghostscript to be installed.
++   ## taa=4, gaa=2 options NOT compatible with earlier R versions!
++   ## units = "px" NOT compatible with even earlier R versions!
++   
++   if(!capabilities(what = "png"))
++   {
++     ## fallback to ghostscript
++     bitmap(plot_file, height=6, width=7, type = "png16m", res = 72, pointsize=18)
++   } else {
++     ## use X11 function, which gives better resolution
++     png(plot_file, height=6, width=7, units ="in", res = 72, pointsize=18)
++     par(family="sans")
++   }
++ } else {
++   pdf(plot_file, height=6, width=7)
++   par(family="sans")
++ }
+> 
+> par(mar=c(5.5,7.5,3,1.5));
+> 
+> max_y = 0
+> if (plot_poisson) {
++ 	max_y = max(X$n, fit_p, fit_nb)
++ } else {
++ 	max_y = max(X$n, fit_nb)
++ }
+> 
+> plot(0:10, 0:10, type="n", lty="solid", ylim=c(0, max_y)*1.05, xlim=c(0, graph_end_i), lwd=1, xaxs="i", yaxs="i", axes=F, las=1, main="Coverage Distribution at Unique-Only Positions", xlab="Coverage depth (reads)", ylab="", cex.lab=1.2, cex.axis=1.2)
+> 
+> mtext(side = 2, text = "Number of reference positions", line = 5.5, cex=1.2)
+> 
+> sciNotation <- function(x, digits = 1) {
++     if (length(x) > 1) {
++         return(append(sciNotation(x[1]), sciNotation(x[-1])))     
++ 	} 
++     if (!x) return(0) 
++ 
++ 	exponent <- floor(log10(x)) 
++     base <- round(x / 10^exponent, digits)     
++ 	as.expression(substitute(base %*% 10^exponent, list(base = base, exponent = exponent))) 
++ }
+> 
+> #axis(2, cex.lab=1.2, las=1, cex.axis=1.2, labels=T, at=(0:6)*50000)
+> axis(2, cex.lab=1.2, las=1, cex.axis=1.2, at = axTicks(2), labels = sciNotation(axTicks(2), 1))
+> axis(1, cex.lab=1.2, cex.axis=1.2, labels=T)
+> box()
+> 
+> #graph the coverage as points
+> fit_data <- subset(X, (coverage>=start_i) & (coverage<=end_i) );
+> points(fit_data$coverage, fit_data$n, pch=my_pch, col=my_col, bg="white", cex=1.2)
+> 
+> #graph the censored coverage as red points
+> cat(start_i, " ", end_i, "\n", sep="")
+36 110
+> 
+> censored_data <- subset(X, (coverage<start_i) | (coverage>end_i) );
+> points(censored_data$coverage, censored_data$n, pch=my_pch, col=my_col_censored, bg="white", cex=1.2)
+> 
+> #graph the poisson fit IF REQUESTED
+> if (plot_poisson) {
++ 	lines(0:max(X$coverage), fit_p, lwd=3, lty="22", col="black");
++ }
+> 
+> #graph the negative binomial fit
+> if (nb_fit_mu > 0) {
++   lines(0:max(X$coverage), fit_nb, lwd=3, col="black");
++ }
+> 
+> if (plot_poisson) {
++ 	legend("topright", c("Coverage distribution", "Censored data", "Negative binomial", "Poisson"), lty=c("blank","blank","solid","22"), lwd=c(1,1,2,2), pch=c(my_pch, my_pch, -1, -1), col=c("black", "red", "black", "black"), bty="n")
++ } else {
++ 	legend("topright", c("Coverage distribution", "Censored data", "Negative binomial"), lty=c("blank","blank","solid"), lwd=c(1,1,2), pch=c(my_pch, my_pch, -1), col=c("black", "red", "black"), bty="n")
++ }
+> 
+> dev.off()
+null device 
+          1 
+> 
+> ## Fit the marginal value that we use for propagating deletions
+> 
+> if (nb_fit_mu > 0) {
++   cat(nb_fit_size, " ", nb_fit_mu, "\n")
++   deletion_propagation_coverage = suppressWarnings(qnbinom(deletion_propagation_pr_cutoff, size = nb_fit_size, mu = nb_fit_mu))
++ } else {
++   cat("Fallback to calculating off an estimate of just variance = mu + mu^2/size\n")
++   size_estimate = (1/(v-m))*(m*m)
++   cat("Mu estimate=", m," Size estimate =", size_estimate, "\n")
++   deletion_propagation_coverage = suppressWarnings(qnbinom(deletion_propagation_pr_cutoff, size = size_estimate, mu = m))
++   if (is.na(deletion_propagation_coverage) || is.nan(deletion_propagation_coverage) || (deletion_propagation_coverage < 1)) {
++     cat("Double fallback to calculating as just 10% of the mean\n")
++     deletion_propagation_coverage = m * 0.1
++   }
++ }
+19.2971   72.10603 
+> 
+> #Don't allow one read to indicate non-deleted regions
+> if (deletion_propagation_coverage < 1) {
++     deletion_propagation_coverage = 1
++ }
+> 
+> #This works fine with the negative values
+> #If we have both low fit coverage and low straight average coverage then we're deleted...
+> if ( (nb_fit_mu <= 3) && (m <= 3) ) {
++   deletion_propagation_coverage = -1
++ }
+> 
+> #print out statistics
+> 
+> print(nb_fit_size);
+[1] 19.2971
+> print(nb_fit_mu);
+[1] 72.10603
+> 
+> print(m)
+[1] 74.05829
+> print(v)
+[1] 466.6352
+> print(D)
+[1] 6.300917
+> 
+> print(deletion_propagation_coverage)
+[1] 26
+> 
+> warnings()
+> 

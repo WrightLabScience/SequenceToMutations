@@ -1,0 +1,18 @@
+universe = vanilla
+log = log_files/$(Cluster).$(Process).log
+error = log_files/$(Cluster).$(Process).err
+output = log_files/$(Cluster).$(Process).out
+
+executable = map.sh
+arguments = $(trimmed_reads) $(ref_genome)
+transfer_input_files = breseq-0.37.1-Linux-x86_64.tar.gz, $(ref_genome), $(trimmed_reads)
+
+request_cpus = 1
+request_memory = 16GB
+request_disk = 32GB
+
+requirements = OSGVO_OS_STRING == "RHEL 8" && HAS_SINGULARITY == True && OSG_HOST_KERNEL_VERSION >= 31000 && Arch == "X86_64"
+
++SingularityImage = "/cvmfs/singularity.opensciencegrid.org/npcooley/synextend:1.18.1"
+
+queue trimmed_reads, ref_genome from map_job_map.txt

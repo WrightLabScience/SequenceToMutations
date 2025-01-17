@@ -1,0 +1,31 @@
+{
+  "max_qual": 36,
+  "num_bases": 100346030,
+  "num_original_bases": 100346360,
+  "num_original_reads": 895692,
+  "num_reads": 895686,
+  "read_length_avg": 112.032600402832,
+  "read_length_max": 150,
+  "read_length_min": 150,
+  "reads": {
+    "p3_trimmed": {
+      "converted_fastq_name": "p3_out/01_sequence_conversion/p3_trimmed.converted.fastq",
+      "max_quality_score": 36,
+      "min_quality_score": 14,
+      "num_bases": 100346030,
+      "num_filtered_coverage_limit_reads": 0,
+      "num_filtered_same_base_reads": 6,
+      "num_filtered_too_many_N_reads": 0,
+      "num_filtered_too_short_reads": 0,
+      "num_original_bases": 100346360,
+      "num_original_reads": 895692,
+      "num_reads": 895686,
+      "quality_format": "SANGER",
+      "quality_format_original": "SANGER",
+      "read_length_avg": 112.032598477591,
+      "read_length_max": 150,
+      "read_length_min": 36
+    }
+  },
+  "total_reference_sequence_length": 2868955
+}

@@ -1,0 +1,20 @@
+universe = vanilla
+log = $(Cluster).$(Process).log
+error = $(Cluster).$(Process).err
+output = $(Cluster).$(Process).out
+
+executable = assemble.sh
+arguments = $(trimmed_reads)
+# change the following stash directory to where you have the SPAdes software
+transfer_input_files = stash:///osgconnect/public/samblechman016/SPAdes-3.15.4-Linux.tar.gz, $(seq_data)
+
+request_cpus = 1
+request_memory = 8GB
+request_disk = 8GB
+
+requirements = OSGVO_OS_STRING == "RHEL 8" && HAS_SINGULARITY == True && OSG_HOST_KERNEL_VERSION >= 31000 && Arch == "X86_64" && HAS_MODULES == True
+
+# change this to most recent/appropriate synextend container, talk to Nick
++SingularityImage = "/cvmfs/singularity.opensciencegrid.org/npcooley/synextend:1.10.1"
+
+queue trimmed_reads from assemble_job_map.txt

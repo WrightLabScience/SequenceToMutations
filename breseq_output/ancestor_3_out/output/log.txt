@@ -1,0 +1,4 @@
+Wed Apr 17 16:17:21 2024
+
+breseq -r Annot_03.gbk p3_trimmed.fastq.gz -o p3_out -j 8
+

@@ -1,0 +1,10 @@
+fasta:
+  class: File
+  location: /srv/ancestor_3_contigs.fasta
+submol:
+  class: File
+  location: /srv/submol_3.yaml
+supplemental_data: { class: Directory, location: /srv/input-2022-04-14.build6021
+  }
+report_usage: true
+ignore_all_errors: true

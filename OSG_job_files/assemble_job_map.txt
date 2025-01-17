@@ -1,0 +1,2 @@
+ancestor_3_trimmed.fastq.gz
+ancestor_4_trimmed.fastq.gz

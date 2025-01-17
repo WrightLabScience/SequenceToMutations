@@ -1,0 +1,4 @@
+ancestor_3_trimmed.fastq.gz Annot_3.gbk
+ancestor_4_trimmed.fastq.gz Annot_4.gbk
+evolved_3a_BHI_trimmed.fastq.gz Annot_3.gbk
+evolved_4a_BHI_trimmed.fastq.gz Annot_4.gbk

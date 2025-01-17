@@ -1,0 +1,1728 @@
+
+R version 4.3.1 (2023-06-16) -- "Beagle Scouts"
+Copyright (C) 2023 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> ##
+> ##
+> ## AUTHORS
+> ##
+> ## Jeffrey E. Barrick <jeffrey.e.barrick@gmail.com>
+> ##
+> ## LICENSE AND COPYRIGHT
+> ##
+> ## Copyright (c) 2008-2010 Michigan State University
+> ## Copyright (c) 2011-2022 The University of Texas at Austin
+> ##
+> ## breseq is free software; you can redistribute it and/or modify it under the
+> ## terms the GNU General Public License as published by the Free Software
+> ## Foundation; either version 1, or (at your option) any later version.
+> ##
+> ##
+> 
+> ## Arguments:
+> ##   distribution_file=/path/to/input 
+> ##   plot_file=/path/to/output 
+> ##   deletion_propagation_pr_cutoff=float
+> ##   plot_poisson=0 or 1
+> ##   pdf_output=0 or 1
+> 
+> ## Returns these values printed out to output log
+> ## 
+> ##  1. print(nb_fit_size); # 0 if fit failed
+> ##  2. print(nb_fit_mu);   # 0 if fit failed
+> ##  3. print(m)q
+> ##  4. print(v)
+> ##  5. print(D)
+> ##  6. print(deletion_propagation_coverage)
+> ##     -1 if it was <1 after fitting (implying reference sequence is deleted)
+> ##
+> 
+> plot_poisson = 0;
+> pdf_output = 1;
+> 
+> this.print.level = 0
+> #this.print.level = 2
+> 
+> for (e in commandArgs(TRUE)) {
++   ta = strsplit(e,"=",fixed=TRUE)[[1]]
++   if(length(ta)>1) {
++     temp = ta[2]
++     assign(ta[1],temp)
++     cat("assigned ",ta[1]," the value of |",temp,"|\n")
++   } else {
++     assign(ta[[1]][1],TRUE)
++     cat("assigned ",ta[1]," the value of TRUE\n")
++   }
++ }
+assigned  distribution_file  the value of | 4a-_BHI_c50_out/07_error_calibration/67.unique_only_coverage_distribution.tab |
+assigned  plot_file  the value of | 4a-_BHI_c50_out/output/calibration/67.unique_coverage.pdf |
+assigned  deletion_propagation_pr_cutoff  the value of | 0.00252217 |
+> 
+> deletion_propagation_pr_cutoff = as.numeric(deletion_propagation_pr_cutoff);
+> 
+> ## initialize values to be filled in
+> nb_fit_mu = 0
+> nb_fit_size = 0
+> m = 0
+> v = 0
+> D = 0
+> deletion_propagation_coverage = -1
+> 
+> min_fraction_included_in_nb_fit = 0.01
+> 
+> #load data
+> X<-read.table(distribution_file, header=T)
+> 
+> #table might be empty
+> if (nrow(X) == 0)
++ {
++   #print out statistics
++   
++   print(nb_fit_size);
++   print(nb_fit_mu);
++   
++   print(m)
++   print(v)
++   print(D)
++   
++   print(deletion_propagation_coverage)
++   
++   q()
++ }
+> 
+> #create the distribution vector and fit
+> Y<-rep(X$coverage, X$n)
+> m<-mean(Y)
+> v<-var(Y)
+> D<-v/m
+> 
+> ###
+> ## Smooth the distribution with a moving average window of size 5
+> ## so that we can more reliably find it's maximum value
+> ###
+> 
+> ma5 = c(1, 1, 1, 1, 1)/5;
+> 
+> ## filtering fails if there are too few points
+> if (nrow(X) >= 5) {
++   X$ma = filter(X$n, ma5)
++ } else {
++ 	X$ma = X$n
++ }
+> 
+> i<-0
+> max_n <- 0;
+> min_i <- max( trunc(m/4), 1 ); #prevents zero for pathological distributions
+> max_i <- i;
+> for (i in min_i:length(X$ma))
++ {		
++   #cat(i, "\n")
++ 	if (!is.na(X$ma[i]) && (X$ma[i] > max_n))
++ 	{
++ 		max_n = X$ma[i];
++ 		max_i = i;
++ 	}
++ }
+> 
+> ##
+> # Censor data on the right and left of the maximum
+> ##
+> 
+> start_i = max(floor(max_i*0.5), 1);
+> end_i = min(ceiling(max_i*1.5), length(X$ma));
+> 
+> if (start_i == end_i)
++ {
++   print(nb_fit_size);
++   print(nb_fit_mu);
++   
++   print(m)
++   print(v)
++   print(D)
++   
++   print(deletion_propagation_coverage)
++   
++   q()
++ }
+> 
+> cat("Fitting from coverage of ", start_i, " to ", end_i, ".\n", sep="")
+Fitting from coverage of 6 to 17.
+> 
+> ##
+> # Coarse grain so that we are only fitting a number of bins that is 1000-2000
+> #
+> # The later adjustment for doing the fits this way is to multiply the means
+> # of the negative binomial and poisson distributions by the binning number.
+> # (The size parameter of the negative binomial doesn't need to be adjusted.)
+> ##
+> 
+> 
+> num_per_bin = trunc((end_i - start_i) / 1000)
+> 
+> if (num_per_bin > 1) 
++ {
++   cat("Coarse-graining for fits\n")
++   start_i_for_fits = trunc(start_i/num_per_bin)
++   end_i_for_fits = ceiling(end_i/num_per_bin)
++   num_bins = end_i - start_i  + 1
++   cat("Fitting from coverage in adjusted bins ", start_i_for_fits, " to ", end_i_for_fits, ".\n", sep="")
++   cat("Number of bins ", num_bins, ". Each bin has ", num_per_bin, " coverage values.\n", sep="")
++ 
++   # Create a new vector where we've added together values in bins
++   X.for.fits = vector("double", end_i_for_fits)
++   for (i in start_i_for_fits:end_i_for_fits)
++   {
++     for (j in 1:num_per_bin)
++     {
++       if (i*num_per_bin+j <= length(X$n))
++       {
++         X.for.fits[i] = X.for.fits[i] + X$n[i*num_per_bin+j]
++       }
++     }
++   }
++ 
++ } else {
++   ## AVOID num_per_bin equalling zero!!
++   X.for.fits = X$n[1:end_i]
++   num_per_bin = 1
++   start_i_for_fits = start_i
++   end_i_for_fits = end_i
++ }
+> 
+> 
+> ##
+> # Now perform negative binomial fitting to the censored data
+> ##
+> 
+> inner_total<-0;
+> for (i in start_i_for_fits:end_i_for_fits)
++ {
++ 	inner_total = inner_total + X.for.fits[i]; 
++ }
+> # Yes: it's correct to use X here because we want the overall total total
+> total_total<-sum(X$n);
+> 
+> ## let's preconstruct these for speed
+> dist = vector("double", end_i_for_fits)
+> 
+> f_nb <- function(par) {
++ 
++ 	mu = par[1];
++ 	size = par[2];
++ 
++   if ((mu <= 0) || (size <= 0))
++   {
++     return(0);
++   }
++   
++   cat(start_i_for_fits, " ", end_i_for_fits, "\n");
++   cat(mu, " ", size, "\n");
++   
++ 	dist<-c()
++ 	total <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{	
++ 		dist[i] <- dnbinom(i, size=size, mu=mu);
++ 		total <- total + dist[i] 
++ 	}
++ 	#print (mu, size)
++ 
++  	l <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{
++ 		l <- l + ((X.for.fits[i]/inner_total)-(dist[i]/total))^2;
++ 	}
++ 	return(l);
++ }
+> 
+> 
+> 
+> ## Fit negative binomial 
+> ## - allow fit to fail and set all params to zero/empty if that is the case
+> nb_fit = NULL
+> ## as.numeric prevents overflow in sums involving integers
+> mean_estimate = sum((as.numeric(1:end_i_for_fits)*as.numeric(X.for.fits)))/sum(as.numeric(X.for.fits))
+> 
+> nb_fit_mu = -1
+> nb_fit_size = -1
+> try_size = 100000
+> try_means_index = 1
+> #This is a list of different means to test <-  sometimes the actual mean doesn't lead to a fit
+> try_means = c(mean_estimate, 
++               end_i_for_fits, 
++               start_i_for_fits, 
++               1*(end_i_for_fits + start_i_for_fits)/4,
++               2*(end_i_for_fits + start_i_for_fits)/4,
++               3*(end_i_for_fits + start_i_for_fits)/4
++               )
+>               
+>               
+> nb_fit = c()
+> 
+> while ( ((nb_fit_mu < 0) || (nb_fit_size < 0) || (nb_fit$code != 1)) && (try_size > 0.001) && (try_means_index <= length(try_means)))
++ {
++   try_size = try_size / 10
++   try_mean = try_means[try_means_index]
++ 
++   ## SIZE ESTIMATE from the censored data can be negative, so try various values instead
++   cat("Try Mean: ", try_mean, " Size: ", try_size, "\n")
++ 
++   try( suppressWarnings(nb_fit<-nlm(f_nb, c(try_mean, try_size), iterlim=1000, print.level=this.print.level)) )
++ 
++   nb_fit_mu = nb_fit$estimate[1];
++   nb_fit_size = nb_fit$estimate[2];
++ 
++   cat("Fit Mean: ", nb_fit_mu, " Size: ", nb_fit_size, " Code: ", nb_fit$code, "\n")
++   
++   if (try_size <= 0.001) {
++     try_size = 100000
++     try_means_index = try_means_index + 1
++   }
++ }
+Try Mean:  10.41961  Size:  10000 
+6   17 
+10.41961   10000 
+6   17 
+10.41961   10000 
+6   17 
+10.41962   10000 
+6   17 
+10.41961   10000.01 
+6   17 
+10.42373   10000 
+6   17 
+10.42374   10000 
+6   17 
+10.42373   10000.01 
+6   17 
+11.10871   10000 
+6   17 
+11.10872   10000 
+6   17 
+11.10871   10000.01 
+6   17 
+11.12883   10000 
+6   17 
+11.12884   10000 
+6   17 
+11.12883   10000.01 
+6   17 
+11.12948   10000 
+6   17 
+11.12949   10000 
+6   17 
+11.12948   10000.01 
+6   17 
+11.12948   10000 
+6   17 
+11.1295   10000 
+6   17 
+11.12948   10000.01 
+Fit Mean:  11.12948  Size:  10000  Code:  2 
+Try Mean:  10.41961  Size:  1000 
+6   17 
+10.41961   1000 
+6   17 
+10.41961   1000 
+6   17 
+10.41962   1000 
+6   17 
+10.41961   1000.001 
+6   17 
+10.42369   1000 
+6   17 
+10.4237   1000 
+6   17 
+10.42369   1000.001 
+6   17 
+11.10582   999.9999 
+6   17 
+11.10583   999.9999 
+6   17 
+11.10582   1000.001 
+6   17 
+11.12679   999.9999 
+6   17 
+11.1268   999.9999 
+6   17 
+11.12679   1000.001 
+6   17 
+11.1275   999.9999 
+6   17 
+11.12751   999.9999 
+6   17 
+11.1275   1000.001 
+6   17 
+11.1275   999.9999 
+6   17 
+11.12751   999.9999 
+6   17 
+11.1275   1000.001 
+Fit Mean:  11.1275  Size:  999.9999  Code:  2 
+Try Mean:  10.41961  Size:  100 
+6   17 
+10.41961   100 
+6   17 
+10.41961   100 
+6   17 
+10.41962   100 
+6   17 
+10.41961   100.0001 
+6   17 
+10.42332   99.99999 
+6   17 
+10.42334   99.99999 
+6   17 
+10.42332   100.0001 
+6   17 
+11.08234   99.9957 
+6   17 
+11.08235   99.9957 
+6   17 
+11.08234   99.9958 
+6   17 
+11.11061   99.99343 
+6   17 
+11.11062   99.99343 
+6   17 
+11.11061   99.99353 
+6   17 
+11.11213   99.9912 
+6   17 
+11.11214   99.9912 
+6   17 
+11.11213   99.9913 
+6   17 
+11.11531   99.98003 
+6   17 
+11.11532   99.98003 
+6   17 
+11.11531   99.98013 
+6   17 
+11.12   99.94746 
+6   17 
+11.12001   99.94746 
+6   17 
+11.12   99.94756 
+6   17 
+11.12788   99.84955 
+6   17 
+11.12789   99.84955 
+6   17 
+11.12788   99.84965 
+6   17 
+11.14054   99.58027 
+6   17 
+11.14055   99.58027 
+6   17 
+11.14054   99.58037 
+6   17 
+11.16152   98.83944 
+6   17 
+11.16153   98.83944 
+6   17 
+11.16152   98.83954 
+6   17 
+11.19718   96.80701 
+6   17 
+11.19719   96.80701 
+6   17 
+11.19718   96.80711 
+6   17 
+11.26406   90.94851 
+6   17 
+11.26407   90.94851 
+6   17 
+11.26406   90.9486 
+6   17 
+11.43914   69.88502 
+6   17 
+11.43916   69.88502 
+6   17 
+11.43914   69.88509 
+6   17 
+11.58968   48.54532 
+6   17 
+11.58969   48.54532 
+6   17 
+11.58968   48.54537 
+Fit Mean:  12.11307  Size:  -13.9306  Code:  1 
+Try Mean:  10.41961  Size:  10 
+6   17 
+10.41961   10 
+6   17 
+10.41961   10 
+6   17 
+10.41962   10 
+6   17 
+10.41961   10.00001 
+6   17 
+10.42165   9.999816 
+6   17 
+10.42166   9.999816 
+6   17 
+10.42165   9.999826 
+6   17 
+11.10931   9.895884 
+6   17 
+11.10932   9.895884 
+6   17 
+11.10931   9.895894 
+6   17 
+11.19784   9.825594 
+6   17 
+11.19785   9.825594 
+6   17 
+11.19784   9.825604 
+6   17 
+11.26497   9.684271 
+6   17 
+11.26498   9.684271 
+6   17 
+11.26497   9.684281 
+6   17 
+11.39356   9.184814 
+6   17 
+11.39357   9.184814 
+6   17 
+11.39356   9.184824 
+6   17 
+11.6747   7.528891 
+6   17 
+11.67471   7.528891 
+6   17 
+11.6747   7.528898 
+Fit Mean:  14.36857  Size:  -10.50587  Code:  1 
+Try Mean:  10.41961  Size:  1 
+6   17 
+10.41961   1 
+6   17 
+10.41961   1 
+6   17 
+10.41962   1 
+6   17 
+10.41961   1.000001 
+6   17 
+10.42016   1.000647 
+6   17 
+10.42017   1.000647 
+6   17 
+10.42016   1.000648 
+6   17 
+10.42072   1.001294 
+6   17 
+10.42073   1.001294 
+6   17 
+10.42072   1.001295 
+6   17 
+10.42127   1.001941 
+6   17 
+10.42128   1.001941 
+6   17 
+10.42127   1.001942 
+6   17 
+10.42183   1.002588 
+6   17 
+10.42184   1.002588 
+6   17 
+10.42183   1.002589 
+6   17 
+10.42238   1.003235 
+6   17 
+10.42239   1.003235 
+6   17 
+10.42238   1.003236 
+6   17 
+10.42294   1.003882 
+6   17 
+10.42295   1.003882 
+6   17 
+10.42294   1.003883 
+6   17 
+10.4235   1.004528 
+6   17 
+10.42351   1.004528 
+6   17 
+10.4235   1.004529 
+6   17 
+10.42405   1.005175 
+6   17 
+10.42406   1.005175 
+6   17 
+10.42405   1.005176 
+6   17 
+10.42461   1.005821 
+6   17 
+10.42462   1.005821 
+6   17 
+10.42461   1.005822 
+6   17 
+10.42516   1.006468 
+6   17 
+10.42517   1.006468 
+6   17 
+10.42516   1.006469 
+6   17 
+10.42572   1.007114 
+6   17 
+10.42573   1.007114 
+6   17 
+10.42572   1.007115 
+6   17 
+10.42628   1.00776 
+6   17 
+10.42629   1.00776 
+6   17 
+10.42628   1.007761 
+6   17 
+10.42683   1.008407 
+6   17 
+10.42684   1.008407 
+6   17 
+10.42683   1.008408 
+6   17 
+10.42739   1.009053 
+6   17 
+10.4274   1.009053 
+6   17 
+10.42739   1.009054 
+6   17 
+10.42795   1.009699 
+6   17 
+10.42796   1.009699 
+6   17 
+10.42795   1.0097 
+6   17 
+10.4285   1.010345 
+6   17 
+10.42851   1.010345 
+6   17 
+10.4285   1.010346 
+6   17 
+10.42906   1.010991 
+6   17 
+10.42907   1.010991 
+6   17 
+10.42906   1.010992 
+6   17 
+10.42962   1.011637 
+6   17 
+10.42963   1.011637 
+6   17 
+10.42962   1.011638 
+6   17 
+10.43017   1.012282 
+6   17 
+10.43019   1.012282 
+6   17 
+10.43017   1.012283 
+6   17 
+10.43073   1.012928 
+6   17 
+10.43074   1.012928 
+6   17 
+10.43073   1.012929 
+6   17 
+10.43129   1.013574 
+6   17 
+10.4313   1.013574 
+6   17 
+10.43129   1.013575 
+6   17 
+10.43185   1.014219 
+6   17 
+10.43186   1.014219 
+6   17 
+10.43185   1.01422 
+6   17 
+10.43241   1.014865 
+6   17 
+10.43242   1.014865 
+6   17 
+10.43241   1.014866 
+6   17 
+10.43296   1.01551 
+6   17 
+10.43297   1.01551 
+6   17 
+10.43296   1.015511 
+6   17 
+10.43352   1.016155 
+6   17 
+10.43353   1.016155 
+6   17 
+10.43352   1.016156 
+6   17 
+10.43408   1.0168 
+6   17 
+10.43409   1.0168 
+6   17 
+10.43408   1.016801 
+6   17 
+10.43464   1.017446 
+6   17 
+10.43465   1.017446 
+6   17 
+10.43464   1.017447 
+6   17 
+10.4352   1.018091 
+6   17 
+10.43521   1.018091 
+6   17 
+10.4352   1.018092 
+6   17 
+10.43576   1.018736 
+6   17 
+10.43577   1.018736 
+6   17 
+10.43576   1.018737 
+6   17 
+10.43631   1.01938 
+6   17 
+10.43633   1.01938 
+6   17 
+10.43631   1.019381 
+6   17 
+10.43687   1.020025 
+6   17 
+10.43688   1.020025 
+6   17 
+10.43687   1.020026 
+6   17 
+10.43743   1.02067 
+6   17 
+10.43744   1.02067 
+6   17 
+10.43743   1.020671 
+6   17 
+10.43799   1.021315 
+6   17 
+10.438   1.021315 
+6   17 
+10.43799   1.021316 
+6   17 
+10.43855   1.021959 
+6   17 
+10.43856   1.021959 
+6   17 
+10.43855   1.02196 
+6   17 
+10.43911   1.022604 
+6   17 
+10.43912   1.022604 
+6   17 
+10.43911   1.022605 
+6   17 
+10.43967   1.023248 
+6   17 
+10.43968   1.023248 
+6   17 
+10.43967   1.023249 
+6   17 
+10.44023   1.023893 
+6   17 
+10.44024   1.023893 
+6   17 
+10.44023   1.023894 
+6   17 
+10.44079   1.024537 
+6   17 
+10.4408   1.024537 
+6   17 
+10.44079   1.024538 
+6   17 
+10.44135   1.025181 
+6   17 
+10.44136   1.025181 
+6   17 
+10.44135   1.025182 
+6   17 
+10.44191   1.025825 
+6   17 
+10.44192   1.025825 
+6   17 
+10.44191   1.025826 
+6   17 
+10.44247   1.026469 
+6   17 
+10.44248   1.026469 
+6   17 
+10.44247   1.02647 
+6   17 
+10.44303   1.027113 
+6   17 
+10.44304   1.027113 
+6   17 
+10.44303   1.027114 
+6   17 
+10.44359   1.027757 
+6   17 
+10.4436   1.027757 
+6   17 
+10.44359   1.027758 
+6   17 
+10.44415   1.028401 
+6   17 
+10.44416   1.028401 
+6   17 
+10.44415   1.028402 
+6   17 
+10.44471   1.029045 
+6   17 
+10.44472   1.029045 
+6   17 
+10.44471   1.029046 
+6   17 
+10.44527   1.029688 
+6   17 
+10.44528   1.029688 
+6   17 
+10.44527   1.029689 
+6   17 
+10.44583   1.030332 
+6   17 
+10.44584   1.030332 
+6   17 
+10.44583   1.030333 
+6   17 
+10.4464   1.030975 
+6   17 
+10.44641   1.030975 
+6   17 
+10.4464   1.030976 
+6   17 
+10.44696   1.031619 
+6   17 
+10.44697   1.031619 
+6   17 
+10.44696   1.03162 
+6   17 
+10.44752   1.032262 
+6   17 
+10.44753   1.032262 
+6   17 
+10.44752   1.032263 
+6   17 
+10.44808   1.032905 
+6   17 
+10.44809   1.032905 
+6   17 
+10.44808   1.032906 
+6   17 
+10.44864   1.033549 
+6   17 
+10.44865   1.033549 
+6   17 
+10.44864   1.03355 
+6   17 
+10.4492   1.034192 
+6   17 
+10.44921   1.034192 
+6   17 
+10.4492   1.034193 
+6   17 
+10.44976   1.034835 
+6   17 
+10.44977   1.034835 
+6   17 
+10.44976   1.034836 
+6   17 
+10.45033   1.035478 
+6   17 
+10.45034   1.035478 
+6   17 
+10.45033   1.035479 
+6   17 
+10.45089   1.036121 
+6   17 
+10.4509   1.036121 
+6   17 
+10.45089   1.036122 
+6   17 
+10.45145   1.036763 
+6   17 
+10.45146   1.036763 
+6   17 
+10.45145   1.036764 
+6   17 
+10.45201   1.037406 
+6   17 
+10.45202   1.037406 
+6   17 
+10.45201   1.037407 
+6   17 
+10.45257   1.038049 
+6   17 
+10.45259   1.038049 
+6   17 
+10.45257   1.03805 
+6   17 
+10.45314   1.038691 
+6   17 
+10.45315   1.038691 
+6   17 
+10.45314   1.038692 
+6   17 
+10.4537   1.039334 
+6   17 
+10.45371   1.039334 
+6   17 
+10.4537   1.039335 
+6   17 
+10.45426   1.039976 
+6   17 
+10.45427   1.039976 
+6   17 
+10.45426   1.039977 
+6   17 
+10.45483   1.040619 
+6   17 
+10.45484   1.040619 
+6   17 
+10.45483   1.04062 
+6   17 
+10.45539   1.041261 
+6   17 
+10.4554   1.041261 
+6   17 
+10.45539   1.041262 
+6   17 
+10.45595   1.041903 
+6   17 
+10.45596   1.041903 
+6   17 
+10.45595   1.041904 
+6   17 
+10.45652   1.042545 
+6   17 
+10.45653   1.042545 
+6   17 
+10.45652   1.042546 
+6   17 
+10.45708   1.043187 
+6   17 
+10.45709   1.043187 
+6   17 
+10.45708   1.043188 
+6   17 
+10.45764   1.043829 
+6   17 
+10.45765   1.043829 
+6   17 
+10.45764   1.04383 
+6   17 
+10.45821   1.044471 
+6   17 
+10.45822   1.044471 
+6   17 
+10.45821   1.044472 
+6   17 
+10.45877   1.045113 
+6   17 
+10.45878   1.045113 
+6   17 
+10.45877   1.045114 
+6   17 
+10.45933   1.045754 
+6   17 
+10.45934   1.045754 
+6   17 
+10.45933   1.045755 
+6   17 
+10.4599   1.046396 
+6   17 
+10.45991   1.046396 
+6   17 
+10.4599   1.046397 
+6   17 
+10.46046   1.047038 
+6   17 
+10.46047   1.047038 
+6   17 
+10.46046   1.047039 
+6   17 
+10.46103   1.047679 
+6   17 
+10.46104   1.047679 
+6   17 
+10.46103   1.04768 
+6   17 
+10.46159   1.04832 
+6   17 
+10.4616   1.04832 
+6   17 
+10.46159   1.048321 
+6   17 
+10.46215   1.048962 
+6   17 
+10.46216   1.048962 
+6   17 
+10.46215   1.048963 
+6   17 
+10.46272   1.049603 
+6   17 
+10.46273   1.049603 
+6   17 
+10.46272   1.049604 
+6   17 
+10.46328   1.050244 
+6   17 
+10.46329   1.050244 
+6   17 
+10.46328   1.050245 
+6   17 
+10.46385   1.050885 
+6   17 
+10.46386   1.050885 
+6   17 
+10.46385   1.050886 
+6   17 
+10.46441   1.051526 
+6   17 
+10.46442   1.051526 
+6   17 
+10.46441   1.051527 
+6   17 
+10.46498   1.052167 
+6   17 
+10.46499   1.052167 
+6   17 
+10.46498   1.052168 
+6   17 
+10.46554   1.052808 
+6   17 
+10.46555   1.052808 
+6   17 
+10.46554   1.052809 
+6   17 
+10.46611   1.053449 
+6   17 
+10.46612   1.053449 
+6   17 
+10.46611   1.05345 
+6   17 
+10.46667   1.054089 
+6   17 
+10.46668   1.054089 
+6   17 
+10.46667   1.05409 
+6   17 
+10.46724   1.05473 
+6   17 
+10.46725   1.05473 
+6   17 
+10.46724   1.054731 
+6   17 
+10.4678   1.055371 
+6   17 
+10.46781   1.055371 
+6   17 
+10.4678   1.055372 
+6   17 
+10.46837   1.056011 
+6   17 
+10.46838   1.056011 
+6   17 
+10.46837   1.056012 
+6   17 
+10.46894   1.056651 
+6   17 
+10.46895   1.056651 
+6   17 
+10.46894   1.056652 
+6   17 
+10.4695   1.057292 
+6   17 
+10.46951   1.057292 
+6   17 
+10.4695   1.057293 
+6   17 
+10.47007   1.057932 
+6   17 
+10.47008   1.057932 
+6   17 
+10.47007   1.057933 
+6   17 
+10.47063   1.058572 
+6   17 
+10.47064   1.058572 
+6   17 
+10.47063   1.058573 
+6   17 
+10.4712   1.059212 
+6   17 
+10.47121   1.059212 
+6   17 
+10.4712   1.059213 
+6   17 
+10.47177   1.059852 
+6   17 
+10.47178   1.059852 
+6   17 
+10.47177   1.059853 
+6   17 
+10.47233   1.060492 
+6   17 
+10.47234   1.060492 
+6   17 
+10.47233   1.060493 
+6   17 
+10.4729   1.061132 
+6   17 
+10.47291   1.061132 
+6   17 
+10.4729   1.061133 
+6   17 
+10.47346   1.061771 
+6   17 
+10.47348   1.061771 
+6   17 
+10.47346   1.061772 
+6   17 
+10.47403   1.062411 
+6   17 
+10.47404   1.062411 
+6   17 
+10.47403   1.062412 
+6   17 
+10.4746   1.063051 
+6   17 
+10.47461   1.063051 
+6   17 
+10.4746   1.063052 
+6   17 
+10.47516   1.06369 
+6   17 
+10.47518   1.06369 
+6   17 
+10.47516   1.063691 
+6   17 
+10.47573   1.064329 
+6   17 
+10.47574   1.064329 
+6   17 
+10.47573   1.064331 
+6   17 
+10.4763   1.064969 
+6   17 
+10.47631   1.064969 
+6   17 
+10.4763   1.06497 
+6   17 
+10.47687   1.065608 
+6   17 
+10.47688   1.065608 
+6   17 
+10.47687   1.065609 
+6   17 
+10.47743   1.066247 
+6   17 
+10.47744   1.066247 
+6   17 
+10.47743   1.066248 
+6   17 
+10.478   1.066886 
+6   17 
+10.47801   1.066886 
+6   17 
+10.478   1.066887 
+6   17 
+10.47857   1.067525 
+6   17 
+10.47858   1.067525 
+6   17 
+10.47857   1.067526 
+6   17 
+10.47914   1.068164 
+6   17 
+10.47915   1.068164 
+6   17 
+10.47914   1.068165 
+6   17 
+10.4797   1.068803 
+6   17 
+10.47971   1.068803 
+6   17 
+10.4797   1.068804 
+6   17 
+10.48027   1.069442 
+6   17 
+10.48028   1.069442 
+6   17 
+10.48027   1.069443 
+6   17 
+10.48084   1.070081 
+6   17 
+10.48085   1.070081 
+6   17 
+10.48084   1.070082 
+6   17 
+10.48141   1.070719 
+6   17 
+10.48142   1.070719 
+6   17 
+10.48141   1.07072 
+6   17 
+10.48198   1.071358 
+6   17 
+10.48199   1.071358 
+6   17 
+10.48198   1.071359 
+6   17 
+10.48254   1.071996 
+6   17 
+10.48255   1.071996 
+6   17 
+10.48254   1.071997 
+6   17 
+10.48311   1.072635 
+6   17 
+10.48312   1.072635 
+6   17 
+10.48311   1.072636 
+6   17 
+10.48368   1.073273 
+6   17 
+10.48369   1.073273 
+6   17 
+10.48368   1.073274 
+6   17 
+10.48425   1.073911 
+6   17 
+10.48426   1.073911 
+6   17 
+10.48425   1.073912 
+6   17 
+10.48482   1.074549 
+6   17 
+10.48483   1.074549 
+6   17 
+10.48482   1.07455 
+6   17 
+10.48539   1.075187 
+6   17 
+10.4854   1.075187 
+6   17 
+10.48539   1.075188 
+6   17 
+10.48596   1.075825 
+6   17 
+10.48597   1.075825 
+6   17 
+10.48596   1.075826 
+6   17 
+10.48652   1.076463 
+6   17 
+10.48653   1.076463 
+6   17 
+10.48652   1.076464 
+6   17 
+10.48709   1.077101 
+6   17 
+10.4871   1.077101 
+6   17 
+10.48709   1.077102 
+6   17 
+10.48766   1.077739 
+6   17 
+10.48767   1.077739 
+6   17 
+10.48766   1.07774 
+6   17 
+10.48823   1.078376 
+6   17 
+10.48824   1.078376 
+6   17 
+10.48823   1.078377 
+6   17 
+10.4888   1.079014 
+6   17 
+10.48881   1.079014 
+6   17 
+10.4888   1.079015 
+6   17 
+10.48937   1.079651 
+6   17 
+10.48938   1.079651 
+6   17 
+10.48937   1.079652 
+6   17 
+10.48994   1.080289 
+6   17 
+10.48995   1.080289 
+6   17 
+10.48994   1.08029 
+6   17 
+10.49051   1.080926 
+6   17 
+10.49052   1.080926 
+6   17 
+10.49051   1.080927 
+6   17 
+10.49108   1.081563 
+6   17 
+10.49109   1.081563 
+6   17 
+10.49108   1.081564 
+6   17 
+10.49165   1.0822 
+6   17 
+10.49166   1.0822 
+6   17 
+10.49165   1.082201 
+6   17 
+10.49222   1.082837 
+6   17 
+10.49223   1.082837 
+6   17 
+10.49222   1.082839 
+6   17 
+10.49279   1.083474 
+6   17 
+10.4928   1.083474 
+6   17 
+10.49279   1.083476 
+6   17 
+10.49336   1.084111 
+6   17 
+10.49337   1.084111 
+6   17 
+10.49336   1.084112 
+6   17 
+10.49393   1.084748 
+6   17 
+10.49394   1.084748 
+6   17 
+10.49393   1.084749 
+6   17 
+10.4945   1.085385 
+6   17 
+10.49451   1.085385 
+6   17 
+10.4945   1.085386 
+6   17 
+10.49507   1.086022 
+6   17 
+10.49508   1.086022 
+6   17 
+10.49507   1.086023 
+6   17 
+10.49564   1.086658 
+6   17 
+10.49565   1.086658 
+6   17 
+10.49564   1.086659 
+6   17 
+10.49621   1.087295 
+6   17 
+10.49622   1.087295 
+6   17 
+10.49621   1.087296 
+6   17 
+10.49678   1.087931 
+6   17 
+10.49679   1.087931 
+6   17 
+10.49678   1.087932 
+6   17 
+10.49735   1.088567 
+6   17 
+10.49736   1.088567 
+6   17 
+10.49735   1.088569 
+6   17 
+10.49792   1.089204 
+6   17 
+10.49793   1.089204 
+6   17 
+10.49792   1.089205 
+6   17 
+10.49849   1.08984 
+6   17 
+10.4985   1.08984 
+6   17 
+10.49849   1.089841 
+6   17 
+10.49907   1.090476 
+6   17 
+10.49908   1.090476 
+6   17 
+10.49907   1.090477 
+6   17 
+10.49964   1.091112 
+6   17 
+10.49965   1.091112 
+6   17 
+10.49964   1.091113 
+6   17 
+7004.469   7789.07 
+6   17 
+709.8966   779.889 
+6   17 
+325.5874   351.9501 
+6   17 
+43.47679   37.8121 
+6   17 
+13.79735   4.76321 
+6   17 
+11.87625   2.624006 
+6   17 
+11.87626   2.624006 
+6   17 
+11.87625   2.624009 
+6   17 
+12.3286   3.127709 
+6   17 
+12.32862   3.127709 
+6   17 
+12.3286   3.127712 
+6   17 
+12.11445   2.889261 
+6   17 
+12.11446   2.889261 
+6   17 
+12.11445   2.889264 
+6   17 
+12.12235   2.89807 
+6   17 
+12.12236   2.89807 
+6   17 
+12.12235   2.898073 
+6   17 
+12.12261   2.898374 
+6   17 
+12.12262   2.898374 
+6   17 
+12.12261   2.898377 
+6   17 
+12.12335   2.899298 
+6   17 
+12.12336   2.899298 
+6   17 
+12.12335   2.899301 
+6   17 
+12.12429   2.900611 
+6   17 
+12.1243   2.900611 
+6   17 
+12.12429   2.900614 
+6   17 
+12.12579   2.903094 
+6   17 
+12.1258   2.903094 
+6   17 
+12.12579   2.903097 
+6   17 
+12.12777   2.907487 
+6   17 
+12.12778   2.907487 
+6   17 
+12.12777   2.90749 
+6   17 
+12.12998   2.9159 
+6   17 
+12.12999   2.9159 
+6   17 
+12.12998   2.915903 
+6   17 
+12.13087   2.932421 
+6   17 
+12.13088   2.932421 
+6   17 
+12.13087   2.932424 
+6   17 
+12.12557   2.965698 
+6   17 
+12.12558   2.965698 
+6   17 
+12.12557   2.965701 
+6   17 
+12.10187   3.030554 
+6   17 
+12.10188   3.030554 
+6   17 
+12.10187   3.030557 
+6   17 
+12.04127   3.136686 
+6   17 
+12.04129   3.136686 
+6   17 
+12.04127   3.136689 
+6   17 
+11.96499   3.224467 
+6   17 
+11.965   3.224467 
+6   17 
+11.96499   3.22447 
+6   17 
+11.94097   3.219852 
+6   17 
+11.94098   3.219852 
+6   17 
+11.94097   3.219856 
+6   17 
+11.94154   3.184215 
+6   17 
+11.94155   3.184215 
+6   17 
+11.94154   3.184218 
+6   17 
+11.94383   3.178558 
+6   17 
+11.94384   3.178558 
+6   17 
+11.94383   3.178561 
+Fit Mean:  11.94383  Size:  3.178558  Code:  1 
+> 
+> cat("Final Fit Mean: ", nb_fit_mu, " Size: ", nb_fit_size, " Code: ", nb_fit$code, " Try Size: ", try_size, "\n")
+Final Fit Mean:  11.94383  Size:  3.178558  Code:  1  Try Size:  1 
+> 
+> ## Fit failed = reset parameters so graphing and output code can recognize this
+> if ((nb_fit_mu < 0) || (nb_fit_size < 0) || (nb_fit$code != 1))
++ {
++   nb_fit_mu = 0
++   nb_fit_size = 0
++ }
+> 
+> 
+> ## things can go wrong with fitting and we can still end up with invalid values
+> 
+> fit_nb = c()
+> included_fract = 0
+> if (nb_fit_mu > 0)
++ {
++   end_fract = pnbinom(end_i_for_fits, mu = nb_fit_mu, size=nb_fit_size)
++   start_fract = pnbinom(start_i_for_fits, mu = nb_fit_mu, size=nb_fit_size)
++   included_fract = end_fract-start_fract;
++ 
++   if (included_fract >= 0.01) {
++ 
++     ## Adjust so that we are back in full coords before making fit!!
++     if (num_per_bin > 1) 
++     {
++       nb_fit_mu = nb_fit_mu * num_per_bin
++     }
++     fit_nb = dnbinom(0:max(X$coverage), mu = nb_fit_mu, size=nb_fit_size)*inner_total/included_fract;
++   }
++ }
+> 
+> ## If an insufficient amount of fit was included, then invalidate it
+> if (included_fract < 0.01)
++ {
++   nb_fit_mu = 0
++   nb_fit_size = 0
++ }
+> 
+> f_p <- function(par) {
++ 
++   lambda = par[1];
++ 
++   if (lambda <= 0)
++   {
++     return(0);
++   }
++   
++ 	total <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{	
++     #cat(i, " ", lambda, "\n");
++ 		dist[i] <- dpois(i, lambda=lambda);
++ 		total <- total + dist[i] 
++ 	}
++ 	#print (total)
++ 
++  	l <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{
++ 		l <- l + ((X.for.fits[i]/inner_total)-(dist[i]/total))^2;
++ 	}
++ 	return(l);
++ }
+> 
+> 
+> ## Fit Poisson 
+> ## - allow fit to fail and set all params to zero/empty if that is the case
+> 
+> p_fit = NULL
+> try(suppressWarnings(p_fit<-nlm(f_p, c(m), print.level=this.print.level)))
+> 
+> fit_p = c()
+> if (!is.null(p_fit) && (p_fit$estimate[1] > 0))
++ {
++   #print (nb_fit$estimate[1])
++   p_fit_lambda = p_fit$estimate[1];
++   #print(0:max(X$coverage))
++ 
++   end_fract = ppois(end_i_for_fits, lambda = p_fit_lambda)
++   start_fract = ppois(start_i_for_fits, lambda = p_fit_lambda)
++   included_fract = end_fract-start_fract;
++ 
++   ## Adjust so that we are back in full coords before making fit!!
++   if (num_per_bin > 1) 
++   {
++     p_fit_lambda = p_fit_lambda * num_per_bin
++   }
++   fit_p<-dpois(0:max(X$coverage), lambda = p_fit_lambda)*inner_total/included_fract;
++ }
+> 
+> 
+> ## Graphing
+> ##
+> ## don't graph very high values with very little coverage
+> i<-max_i
+> while (i <= length(X$n) && X$n[i]>0.01*max_n)
++ {		
++ 	i <- i+1;
++ }
+> graph_end_i <-i
+> 
+> ## Ths leaves enough room to the right of the peak for the legend
+> graph_end_i = max(floor(2.2 * max_i), graph_end_i);
+> 
+> ## graphics settings
+> my_pch = 21
+> my_col = "black";
+> my_col_censored = "red";
+> 
+> if (pdf_output == 0) {
++   
++   ## bitmap() requires ghostscript to be installed.
++   ## taa=4, gaa=2 options NOT compatible with earlier R versions!
++   ## units = "px" NOT compatible with even earlier R versions!
++   
++   if(!capabilities(what = "png"))
++   {
++     ## fallback to ghostscript
++     bitmap(plot_file, height=6, width=7, type = "png16m", res = 72, pointsize=18)
++   } else {
++     ## use X11 function, which gives better resolution
++     png(plot_file, height=6, width=7, units ="in", res = 72, pointsize=18)
++     par(family="sans")
++   }
++ } else {
++   pdf(plot_file, height=6, width=7)
++   par(family="sans")
++ }
+> 
+> par(mar=c(5.5,7.5,3,1.5));
+> 
+> max_y = 0
+> if (plot_poisson) {
++ 	max_y = max(X$n, fit_p, fit_nb)
++ } else {
++ 	max_y = max(X$n, fit_nb)
++ }
+> 
+> plot(0:10, 0:10, type="n", lty="solid", ylim=c(0, max_y)*1.05, xlim=c(0, graph_end_i), lwd=1, xaxs="i", yaxs="i", axes=F, las=1, main="Coverage Distribution at Unique-Only Positions", xlab="Coverage depth (reads)", ylab="", cex.lab=1.2, cex.axis=1.2)
+> 
+> mtext(side = 2, text = "Number of reference positions", line = 5.5, cex=1.2)
+> 
+> sciNotation <- function(x, digits = 1) {
++     if (length(x) > 1) {
++         return(append(sciNotation(x[1]), sciNotation(x[-1])))     
++ 	} 
++     if (!x) return(0) 
++ 
++ 	exponent <- floor(log10(x)) 
++     base <- round(x / 10^exponent, digits)     
++ 	as.expression(substitute(base %*% 10^exponent, list(base = base, exponent = exponent))) 
++ }
+> 
+> #axis(2, cex.lab=1.2, las=1, cex.axis=1.2, labels=T, at=(0:6)*50000)
+> axis(2, cex.lab=1.2, las=1, cex.axis=1.2, at = axTicks(2), labels = sciNotation(axTicks(2), 1))
+> axis(1, cex.lab=1.2, cex.axis=1.2, labels=T)
+> box()
+> 
+> #graph the coverage as points
+> fit_data <- subset(X, (coverage>=start_i) & (coverage<=end_i) );
+> points(fit_data$coverage, fit_data$n, pch=my_pch, col=my_col, bg="white", cex=1.2)
+> 
+> #graph the censored coverage as red points
+> cat(start_i, " ", end_i, "\n", sep="")
+6 17
+> 
+> censored_data <- subset(X, (coverage<start_i) | (coverage>end_i) );
+> points(censored_data$coverage, censored_data$n, pch=my_pch, col=my_col_censored, bg="white", cex=1.2)
+> 
+> #graph the poisson fit IF REQUESTED
+> if (plot_poisson) {
++ 	lines(0:max(X$coverage), fit_p, lwd=3, lty="22", col="black");
++ }
+> 
+> #graph the negative binomial fit
+> if (nb_fit_mu > 0) {
++   lines(0:max(X$coverage), fit_nb, lwd=3, col="black");
++ }
+> 
+> if (plot_poisson) {
++ 	legend("topright", c("Coverage distribution", "Censored data", "Negative binomial", "Poisson"), lty=c("blank","blank","solid","22"), lwd=c(1,1,2,2), pch=c(my_pch, my_pch, -1, -1), col=c("black", "red", "black", "black"), bty="n")
++ } else {
++ 	legend("topright", c("Coverage distribution", "Censored data", "Negative binomial"), lty=c("blank","blank","solid"), lwd=c(1,1,2), pch=c(my_pch, my_pch, -1), col=c("black", "red", "black"), bty="n")
++ }
+> 
+> dev.off()
+null device 
+          1 
+> 
+> ## Fit the marginal value that we use for propagating deletions
+> 
+> if (nb_fit_mu > 0) {
++   cat(nb_fit_size, " ", nb_fit_mu, "\n")
++   deletion_propagation_coverage = suppressWarnings(qnbinom(deletion_propagation_pr_cutoff, size = nb_fit_size, mu = nb_fit_mu))
++ } else {
++   cat("Fallback to calculating off an estimate of just variance = mu + mu^2/size\n")
++   size_estimate = (1/(v-m))*(m*m)
++   cat("Mu estimate=", m," Size estimate =", size_estimate, "\n")
++   deletion_propagation_coverage = suppressWarnings(qnbinom(deletion_propagation_pr_cutoff, size = size_estimate, mu = m))
++   if (is.na(deletion_propagation_coverage) || is.nan(deletion_propagation_coverage) || (deletion_propagation_coverage < 1)) {
++     cat("Double fallback to calculating as just 10% of the mean\n")
++     deletion_propagation_coverage = m * 0.1
++   }
++ }
+3.178558   11.94383 
+> 
+> #Don't allow one read to indicate non-deleted regions
+> if (deletion_propagation_coverage < 1) {
++     deletion_propagation_coverage = 1
++ }
+> 
+> #This works fine with the negative values
+> #If we have both low fit coverage and low straight average coverage then we're deleted...
+> if ( (nb_fit_mu <= 3) && (m <= 3) ) {
++   deletion_propagation_coverage = -1
++ }
+> 
+> #print out statistics
+> 
+> print(nb_fit_size);
+[1] 3.178558
+> print(nb_fit_mu);
+[1] 11.94383
+> 
+> print(m)
+[1] 10.41961
+> print(v)
+[1] 11.89017
+> print(D)
+[1] 1.141134
+> 
+> print(deletion_propagation_coverage)
+[1] 1
+> 
+> warnings()
+> 

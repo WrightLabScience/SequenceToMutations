@@ -1,0 +1,2102 @@
+
+R version 4.3.1 (2023-06-16) -- "Beagle Scouts"
+Copyright (C) 2023 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> ##
+> ##
+> ## AUTHORS
+> ##
+> ## Jeffrey E. Barrick <jeffrey.e.barrick@gmail.com>
+> ##
+> ## LICENSE AND COPYRIGHT
+> ##
+> ## Copyright (c) 2008-2010 Michigan State University
+> ## Copyright (c) 2011-2022 The University of Texas at Austin
+> ##
+> ## breseq is free software; you can redistribute it and/or modify it under the
+> ## terms the GNU General Public License as published by the Free Software
+> ## Foundation; either version 1, or (at your option) any later version.
+> ##
+> ##
+> 
+> ## Arguments:
+> ##   distribution_file=/path/to/input 
+> ##   plot_file=/path/to/output 
+> ##   deletion_propagation_pr_cutoff=float
+> ##   plot_poisson=0 or 1
+> ##   pdf_output=0 or 1
+> 
+> ## Returns these values printed out to output log
+> ## 
+> ##  1. print(nb_fit_size); # 0 if fit failed
+> ##  2. print(nb_fit_mu);   # 0 if fit failed
+> ##  3. print(m)q
+> ##  4. print(v)
+> ##  5. print(D)
+> ##  6. print(deletion_propagation_coverage)
+> ##     -1 if it was <1 after fitting (implying reference sequence is deleted)
+> ##
+> 
+> plot_poisson = 0;
+> pdf_output = 1;
+> 
+> this.print.level = 0
+> #this.print.level = 2
+> 
+> for (e in commandArgs(TRUE)) {
++   ta = strsplit(e,"=",fixed=TRUE)[[1]]
++   if(length(ta)>1) {
++     temp = ta[2]
++     assign(ta[1],temp)
++     cat("assigned ",ta[1]," the value of |",temp,"|\n")
++   } else {
++     assign(ta[[1]][1],TRUE)
++     cat("assigned ",ta[1]," the value of TRUE\n")
++   }
++ }
+assigned  distribution_file  the value of | 3a-_BHI_c50_out/07_error_calibration/68.unique_only_coverage_distribution.tab |
+assigned  plot_file  the value of | 3a-_BHI_c50_out/output/calibration/68.unique_coverage.pdf |
+assigned  deletion_propagation_pr_cutoff  the value of | 0.00148348 |
+> 
+> deletion_propagation_pr_cutoff = as.numeric(deletion_propagation_pr_cutoff);
+> 
+> ## initialize values to be filled in
+> nb_fit_mu = 0
+> nb_fit_size = 0
+> m = 0
+> v = 0
+> D = 0
+> deletion_propagation_coverage = -1
+> 
+> min_fraction_included_in_nb_fit = 0.01
+> 
+> #load data
+> X<-read.table(distribution_file, header=T)
+> 
+> #table might be empty
+> if (nrow(X) == 0)
++ {
++   #print out statistics
++   
++   print(nb_fit_size);
++   print(nb_fit_mu);
++   
++   print(m)
++   print(v)
++   print(D)
++   
++   print(deletion_propagation_coverage)
++   
++   q()
++ }
+> 
+> #create the distribution vector and fit
+> Y<-rep(X$coverage, X$n)
+> m<-mean(Y)
+> v<-var(Y)
+> D<-v/m
+> 
+> ###
+> ## Smooth the distribution with a moving average window of size 5
+> ## so that we can more reliably find it's maximum value
+> ###
+> 
+> ma5 = c(1, 1, 1, 1, 1)/5;
+> 
+> ## filtering fails if there are too few points
+> if (nrow(X) >= 5) {
++   X$ma = filter(X$n, ma5)
++ } else {
++ 	X$ma = X$n
++ }
+> 
+> i<-0
+> max_n <- 0;
+> min_i <- max( trunc(m/4), 1 ); #prevents zero for pathological distributions
+> max_i <- i;
+> for (i in min_i:length(X$ma))
++ {		
++   #cat(i, "\n")
++ 	if (!is.na(X$ma[i]) && (X$ma[i] > max_n))
++ 	{
++ 		max_n = X$ma[i];
++ 		max_i = i;
++ 	}
++ }
+> 
+> ##
+> # Censor data on the right and left of the maximum
+> ##
+> 
+> start_i = max(floor(max_i*0.5), 1);
+> end_i = min(ceiling(max_i*1.5), length(X$ma));
+> 
+> if (start_i == end_i)
++ {
++   print(nb_fit_size);
++   print(nb_fit_mu);
++   
++   print(m)
++   print(v)
++   print(D)
++   
++   print(deletion_propagation_coverage)
++   
++   q()
++ }
+> 
+> cat("Fitting from coverage of ", start_i, " to ", end_i, ".\n", sep="")
+Fitting from coverage of 1 to 2.
+> 
+> ##
+> # Coarse grain so that we are only fitting a number of bins that is 1000-2000
+> #
+> # The later adjustment for doing the fits this way is to multiply the means
+> # of the negative binomial and poisson distributions by the binning number.
+> # (The size parameter of the negative binomial doesn't need to be adjusted.)
+> ##
+> 
+> 
+> num_per_bin = trunc((end_i - start_i) / 1000)
+> 
+> if (num_per_bin > 1) 
++ {
++   cat("Coarse-graining for fits\n")
++   start_i_for_fits = trunc(start_i/num_per_bin)
++   end_i_for_fits = ceiling(end_i/num_per_bin)
++   num_bins = end_i - start_i  + 1
++   cat("Fitting from coverage in adjusted bins ", start_i_for_fits, " to ", end_i_for_fits, ".\n", sep="")
++   cat("Number of bins ", num_bins, ". Each bin has ", num_per_bin, " coverage values.\n", sep="")
++ 
++   # Create a new vector where we've added together values in bins
++   X.for.fits = vector("double", end_i_for_fits)
++   for (i in start_i_for_fits:end_i_for_fits)
++   {
++     for (j in 1:num_per_bin)
++     {
++       if (i*num_per_bin+j <= length(X$n))
++       {
++         X.for.fits[i] = X.for.fits[i] + X$n[i*num_per_bin+j]
++       }
++     }
++   }
++ 
++ } else {
++   ## AVOID num_per_bin equalling zero!!
++   X.for.fits = X$n[1:end_i]
++   num_per_bin = 1
++   start_i_for_fits = start_i
++   end_i_for_fits = end_i
++ }
+> 
+> 
+> ##
+> # Now perform negative binomial fitting to the censored data
+> ##
+> 
+> inner_total<-0;
+> for (i in start_i_for_fits:end_i_for_fits)
++ {
++ 	inner_total = inner_total + X.for.fits[i]; 
++ }
+> # Yes: it's correct to use X here because we want the overall total total
+> total_total<-sum(X$n);
+> 
+> ## let's preconstruct these for speed
+> dist = vector("double", end_i_for_fits)
+> 
+> f_nb <- function(par) {
++ 
++ 	mu = par[1];
++ 	size = par[2];
++ 
++   if ((mu <= 0) || (size <= 0))
++   {
++     return(0);
++   }
++   
++   cat(start_i_for_fits, " ", end_i_for_fits, "\n");
++   cat(mu, " ", size, "\n");
++   
++ 	dist<-c()
++ 	total <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{	
++ 		dist[i] <- dnbinom(i, size=size, mu=mu);
++ 		total <- total + dist[i] 
++ 	}
++ 	#print (mu, size)
++ 
++  	l <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{
++ 		l <- l + ((X.for.fits[i]/inner_total)-(dist[i]/total))^2;
++ 	}
++ 	return(l);
++ }
+> 
+> 
+> 
+> ## Fit negative binomial 
+> ## - allow fit to fail and set all params to zero/empty if that is the case
+> nb_fit = NULL
+> ## as.numeric prevents overflow in sums involving integers
+> mean_estimate = sum((as.numeric(1:end_i_for_fits)*as.numeric(X.for.fits)))/sum(as.numeric(X.for.fits))
+> 
+> nb_fit_mu = -1
+> nb_fit_size = -1
+> try_size = 100000
+> try_means_index = 1
+> #This is a list of different means to test <-  sometimes the actual mean doesn't lead to a fit
+> try_means = c(mean_estimate, 
++               end_i_for_fits, 
++               start_i_for_fits, 
++               1*(end_i_for_fits + start_i_for_fits)/4,
++               2*(end_i_for_fits + start_i_for_fits)/4,
++               3*(end_i_for_fits + start_i_for_fits)/4
++               )
+>               
+>               
+> nb_fit = c()
+> 
+> while ( ((nb_fit_mu < 0) || (nb_fit_size < 0) || (nb_fit$code != 1)) && (try_size > 0.001) && (try_means_index <= length(try_means)))
++ {
++   try_size = try_size / 10
++   try_mean = try_means[try_means_index]
++ 
++   ## SIZE ESTIMATE from the censored data can be negative, so try various values instead
++   cat("Try Mean: ", try_mean, " Size: ", try_size, "\n")
++ 
++   try( suppressWarnings(nb_fit<-nlm(f_nb, c(try_mean, try_size), iterlim=1000, print.level=this.print.level)) )
++ 
++   nb_fit_mu = nb_fit$estimate[1];
++   nb_fit_size = nb_fit$estimate[2];
++ 
++   cat("Fit Mean: ", nb_fit_mu, " Size: ", nb_fit_size, " Code: ", nb_fit$code, "\n")
++   
++   if (try_size <= 0.001) {
++     try_size = 100000
++     try_means_index = try_means_index + 1
++   }
++ }
+Try Mean:  1.040258  Size:  10000 
+1   2 
+1.040258   10000 
+1   2 
+1.040258   10000 
+1   2 
+1.040259   10000 
+1   2 
+1.040258   10000.01 
+1   2 
+0.7789873   10000 
+1   2 
+0.7789883   10000 
+1   2 
+0.7789873   10000.01 
+Fit Mean:  -4.373301  Size:  10000  Code:  1 
+Try Mean:  1.040258  Size:  1000 
+1   2 
+1.040258   1000 
+1   2 
+1.040258   1000 
+1   2 
+1.040259   1000 
+1   2 
+1.040258   1000.001 
+1   2 
+0.7792417   1000 
+1   2 
+0.7792427   1000 
+1   2 
+0.7792417   1000.001 
+Fit Mean:  -4.434805  Size:  1000  Code:  1 
+Try Mean:  1.040258  Size:  100 
+1   2 
+1.040258   100 
+1   2 
+1.040258   100 
+1   2 
+1.040259   100 
+1   2 
+1.040258   100.0001 
+1   2 
+0.7817586   100 
+1   2 
+0.7817596   100 
+1   2 
+0.7817586   100.0001 
+Fit Mean:  -5.131008  Size:  100.0029  Code:  1 
+Try Mean:  1.040258  Size:  10 
+1   2 
+1.040258   10 
+1   2 
+1.040258   10 
+1   2 
+1.040259   10 
+1   2 
+1.040258   10.00001 
+1   2 
+0.8044966   9.99991 
+1   2 
+0.8044976   9.99991 
+1   2 
+0.8044966   9.99992 
+1   2 
+0.5670858   10.00025 
+1   2 
+0.5670868   10.00025 
+1   2 
+0.5670858   10.00026 
+Fit Mean:  -2.506192  Size:  10.00711  Code:  1 
+Try Mean:  1.040258  Size:  1 
+1   2 
+1.040258   1 
+1   2 
+1.040258   1 
+1   2 
+1.040259   1 
+1   2 
+1.040258   1.000001 
+1   2 
+0.9148857   0.9973748 
+1   2 
+0.9148867   0.9973748 
+1   2 
+0.9148857   0.9973758 
+1   2 
+0.7736636   1.002895 
+1   2 
+0.7736646   1.002895 
+1   2 
+0.7736636   1.002896 
+1   2 
+0.6110888   1.017067 
+1   2 
+0.6110898   1.017067 
+1   2 
+0.6110888   1.017069 
+1   2 
+0.4202325   1.039178 
+1   2 
+0.4202335   1.039178 
+1   2 
+0.4202325   1.039179 
+1   2 
+0.1982244   1.064703 
+1   2 
+0.1982254   1.064703 
+1   2 
+0.1982244   1.064704 
+Fit Mean:  -2.03059  Size:  1.227477  Code:  1 
+Try Mean:  1.040258  Size:  0.1 
+1   2 
+1.040258   0.1 
+1   2 
+1.040258   0.1 
+1   2 
+1.040259   0.1 
+1   2 
+1.040258   0.100001 
+1   2 
+1.018211   0.0916064 
+1   2 
+1.018212   0.0916064 
+1   2 
+1.018211   0.0916074 
+1   2 
+0.1533365   0.1528548 
+1   2 
+0.1533375   0.1528548 
+1   2 
+0.1533365   0.1528558 
+Fit Mean:  -18.14507  Size:  2.335551  Code:  1 
+Try Mean:  1.040258  Size:  0.01 
+1   2 
+1.040258   0.01 
+1   2 
+1.040258   0.01 
+1   2 
+1.040259   0.01 
+1   2 
+1.040258   0.010001 
+1   2 
+1.037872   0.0001090118 
+1   2 
+1.037873   0.0001090118 
+1   2 
+1.037872   0.0001100118 
+Fit Mean:  1.124098  Size:  -0.7688608  Code:  1 
+Try Mean:  1.040258  Size:  0.001 
+1   2 
+1.040258   0.001 
+1   2 
+1.040258   0.001 
+1   2 
+1.040259   0.001 
+1   2 
+1.040258   0.001001 
+Fit Mean:  1.040017  Size:  -0.009062394  Code:  1 
+Try Mean:  2  Size:  10000 
+1   2 
+2   10000 
+1   2 
+2   10000 
+1   2 
+2.000002   10000 
+1   2 
+2   10000.01 
+1   2 
+1.770187   10000 
+1   2 
+1.770189   10000 
+1   2 
+1.770187   10000.01 
+1   2 
+1.528646   10000 
+1   2 
+1.528648   10000 
+1   2 
+1.528646   10000.01 
+1   2 
+1.276223   10000 
+1   2 
+1.276224   10000 
+1   2 
+1.276223   10000.01 
+1   2 
+1.015934   10000 
+1   2 
+1.015935   10000 
+1   2 
+1.015934   10000.01 
+1   2 
+0.7550971   10000 
+1   2 
+0.7550981   10000 
+1   2 
+0.7550971   10000.01 
+Fit Mean:  -3.702037  Size:  10000  Code:  1 
+Try Mean:  2  Size:  1000 
+1   2 
+2   1000 
+1   2 
+2   1000 
+1   2 
+2.000002   1000 
+1   2 
+2   1000.001 
+1   2 
+1.770712   1000 
+1   2 
+1.770714   1000 
+1   2 
+1.770712   1000.001 
+1   2 
+1.529688   1000 
+1   2 
+1.52969   1000 
+1   2 
+1.529688   1000.001 
+1   2 
+1.277744   1000 
+1   2 
+1.277745   1000 
+1   2 
+1.277744   1000.001 
+1   2 
+1.017844   1000 
+1   2 
+1.017845   1000 
+1   2 
+1.017844   1000.001 
+1   2 
+0.7572114   1000 
+1   2 
+0.7572124   1000 
+1   2 
+0.7572114   1000.001 
+Fit Mean:  -3.797808  Size:  1000  Code:  1 
+Try Mean:  2  Size:  100 
+1   2 
+2   100 
+1   2 
+2   100 
+1   2 
+2.000002   100 
+1   2 
+2   100.0001 
+1   2 
+1.775849   99.99996 
+1   2 
+1.775851   99.99996 
+1   2 
+1.775849   100.0001 
+1   2 
+1.539903   99.99992 
+1   2 
+1.539905   99.99992 
+1   2 
+1.539903   100 
+1   2 
+1.292702   99.9999 
+1   2 
+1.292703   99.9999 
+1   2 
+1.292702   100 
+1   2 
+1.036699   99.99989 
+1   2 
+1.0367   99.99989 
+1   2 
+1.036699   99.99999 
+1   2 
+0.7782365   99.99989 
+1   2 
+0.7782375   99.99989 
+1   2 
+0.7782365   99.99999 
+Fit Mean:  -4.991828  Size:  99.99999  Code:  1 
+Try Mean:  2  Size:  10 
+1   2 
+2   10 
+1   2 
+2   10 
+1   2 
+2.000002   10 
+1   2 
+2   10.00001 
+1   2 
+1.817844   9.996688 
+1   2 
+1.817846   9.996688 
+1   2 
+1.817844   9.996698 
+1   2 
+1.624621   9.994075 
+1   2 
+1.624622   9.994075 
+1   2 
+1.624621   9.994085 
+1   2 
+1.419408   9.99218 
+1   2 
+1.419409   9.99218 
+1   2 
+1.419408   9.99219 
+1   2 
+1.201728   9.991 
+1   2 
+1.201729   9.991 
+1   2 
+1.201728   9.99101 
+1   2 
+0.97233   9.990493 
+1   2 
+0.972331   9.990493 
+1   2 
+0.97233   9.990503 
+1   2 
+0.73494   9.990552 
+1   2 
+0.734941   9.990552 
+1   2 
+0.73494   9.990562 
+Fit Mean:  -22.86481  Size:  10.03241  Code:  1 
+Try Mean:  2  Size:  1 
+1   2 
+2   1 
+1   2 
+2   1 
+1   2 
+2.000002   1 
+1   2 
+2   1.000001 
+1   2 
+1.942441   0.9424412 
+1   2 
+1.942443   0.9424412 
+1   2 
+1.942441   0.9424422 
+Fit Mean:  -5.395614  Size:  -6.395617  Code:  1 
+Try Mean:  2  Size:  0.1 
+1   2 
+2   0.1 
+1   2 
+2   0.1 
+1   2 
+2.000002   0.1 
+1   2 
+2   0.100001 
+Fit Mean:  1.99348  Size:  -0.01855164  Code:  1 
+Try Mean:  2  Size:  0.01 
+1   2 
+2   0.01 
+1   2 
+2   0.01 
+1   2 
+2.000002   0.01 
+1   2 
+2   0.010001 
+Fit Mean:  1.999348  Size:  -0.1190203  Code:  1 
+Try Mean:  2  Size:  0.001 
+1   2 
+2   0.001 
+1   2 
+2   0.001 
+1   2 
+2.000002   0.001 
+1   2 
+2   0.001001 
+Fit Mean:  1.999935  Size:  -0.1291316  Code:  1 
+Try Mean:  1  Size:  10000 
+1   2 
+1   10000 
+1   2 
+1   10000 
+1   2 
+1.000001   10000 
+1   2 
+1   10000.01 
+1   2 
+0.7395143   10000 
+1   2 
+0.7395153   10000 
+1   2 
+0.7395143   10000.01 
+Fit Mean:  -3.333365  Size:  10000  Code:  1 
+Try Mean:  1  Size:  1000 
+1   2 
+1   1000 
+1   2 
+1   1000 
+1   2 
+1.000001   1000 
+1   2 
+1   1000.001 
+1   2 
+0.7397485   1000 
+1   2 
+0.7397495   1000 
+1   2 
+0.7397485   1000.001 
+Fit Mean:  -3.373453  Size:  1000  Code:  1 
+Try Mean:  1  Size:  100 
+1   2 
+1   100 
+1   2 
+1   100 
+1   2 
+1.000001   100 
+1   2 
+1   100.0001 
+1   2 
+0.7420676   100 
+1   2 
+0.7420686   100 
+1   2 
+0.7420676   100.0001 
+Fit Mean:  -3.816102  Size:  100.0016  Code:  1 
+Try Mean:  1  Size:  10 
+1   2 
+1   10 
+1   2 
+1   10 
+1   2 
+1.000001   10 
+1   2 
+1   10.00001 
+1   2 
+0.7631712   10 
+1   2 
+0.7631722   10 
+1   2 
+0.7631712   10.00001 
+Fit Mean:  -124.3928  Size:  66.32969  Code:  1 
+Try Mean:  1  Size:  1 
+1   2 
+1   1 
+1   2 
+1   1 
+1   2 
+1.000001   1 
+1   2 
+1   1.000001 
+1   2 
+0.8697442   1 
+1   2 
+0.8697452   1 
+1   2 
+0.8697442   1.000001 
+1   2 
+0.7219846   1.00837 
+1   2 
+0.7219856   1.00837 
+1   2 
+0.7219846   1.008371 
+1   2 
+0.5506551   1.025351 
+1   2 
+0.5506561   1.025351 
+1   2 
+0.5506551   1.025352 
+1   2 
+0.3489389   1.049385 
+1   2 
+0.3489399   1.049385 
+1   2 
+0.3489389   1.049386 
+1   2 
+0.121017   1.073462 
+1   2 
+0.121018   1.073462 
+1   2 
+0.121017   1.073463 
+Fit Mean:  -0.2403209  Size:  1.090838  Code:  1 
+Try Mean:  1  Size:  0.1 
+1   2 
+1   0.1 
+1   2 
+1   0.1 
+1   2 
+1.000001   0.1 
+1   2 
+1   0.100001 
+1   2 
+0.9763171   0.1 
+1   2 
+0.9763181   0.1 
+1   2 
+0.9763171   0.100001 
+1   2 
+0.9515856   0.1051986 
+1   2 
+0.9515866   0.1051986 
+1   2 
+0.9515856   0.1051996 
+1   2 
+0.924477   0.1159404 
+1   2 
+0.924478   0.1159404 
+1   2 
+0.924477   0.1159414 
+1   2 
+0.8933641   0.13273 
+1   2 
+0.8933651   0.13273 
+1   2 
+0.8933641   0.132731 
+1   2 
+0.8562137   0.1562696 
+1   2 
+0.8562147   0.1562696 
+1   2 
+0.8562137   0.1562706 
+1   2 
+0.8103986   0.1874854 
+1   2 
+0.8103996   0.1874854 
+1   2 
+0.8103986   0.1874864 
+1   2 
+0.7523755   0.2275302 
+1   2 
+0.7523765   0.2275302 
+1   2 
+0.7523755   0.2275312 
+1   2 
+0.6771106   0.2777354 
+1   2 
+0.6771116   0.2777354 
+1   2 
+0.6771106   0.2777364 
+1   2 
+0.5769959   0.3394147 
+1   2 
+0.5769969   0.3394147 
+1   2 
+0.5769959   0.3394157 
+1   2 
+0.4396803   0.4131357 
+1   2 
+0.4396813   0.4131357 
+1   2 
+0.4396803   0.4131367 
+1   2 
+0.2440909   0.4956714 
+1   2 
+0.2440919   0.4956714 
+1   2 
+0.2440909   0.4956724 
+Fit Mean:  -0.03072058  Size:  0.5640666  Code:  1 
+Try Mean:  1  Size:  0.01 
+1   2 
+1   0.01 
+1   2 
+1   0.01 
+1   2 
+1.000001   0.01 
+1   2 
+1   0.010001 
+1   2 
+0.9974207   0.01 
+1   2 
+0.9974217   0.01 
+1   2 
+0.9974207   0.010001 
+1   2 
+0.9948281   0.01066037 
+1   2 
+0.9948291   0.01066037 
+1   2 
+0.9948281   0.01066137 
+1   2 
+0.992052   0.01198613 
+1   2 
+0.992053   0.01198613 
+1   2 
+0.992052   0.01198713 
+1   2 
+0.9889174   0.01402373 
+1   2 
+0.9889184   0.01402373 
+1   2 
+0.9889174   0.01402473 
+1   2 
+0.9852346   0.01686211 
+1   2 
+0.9852356   0.01686211 
+1   2 
+0.9852346   0.01686311 
+1   2 
+0.9807865   0.02063595 
+1   2 
+0.9807875   0.02063595 
+1   2 
+0.9807865   0.02063695 
+1   2 
+0.9753154   0.025531 
+1   2 
+0.9753164   0.025531 
+1   2 
+0.9753154   0.025532 
+1   2 
+0.9685064   0.03179191 
+1   2 
+0.9685074   0.03179191 
+1   2 
+0.9685064   0.03179291 
+1   2 
+0.9599669   0.03973249 
+1   2 
+0.9599679   0.03973249 
+1   2 
+0.9599669   0.03973349 
+1   2 
+0.9491999   0.04974863 
+1   2 
+0.9492009   0.04974863 
+1   2 
+0.9491999   0.04974963 
+1   2 
+0.9355696   0.06233385 
+1   2 
+0.9355706   0.06233385 
+1   2 
+0.9355696   0.06233485 
+1   2 
+0.9182527   0.07809737 
+1   2 
+0.9182537   0.07809737 
+1   2 
+0.9182527   0.07809837 
+1   2 
+0.8961709   0.09778422 
+1   2 
+0.8961719   0.09778422 
+1   2 
+0.8961709   0.09778522 
+1   2 
+0.8678926   0.1222961 
+1   2 
+0.8678936   0.1222961 
+1   2 
+0.8678926   0.1222971 
+1   2 
+0.8314833   0.1527109 
+1   2 
+0.8314843   0.1527109 
+1   2 
+0.8314833   0.1527119 
+1   2 
+0.7842677   0.1902939 
+1   2 
+0.7842687   0.1902939 
+1   2 
+0.7842677   0.1902949 
+1   2 
+0.722428   0.2364861 
+1   2 
+0.722429   0.2364861 
+1   2 
+0.722428   0.2364871 
+1   2 
+0.6402779   0.2928217 
+1   2 
+0.6402789   0.2928217 
+1   2 
+0.6402779   0.2928227 
+1   2 
+0.5288553   0.360612 
+1   2 
+0.5288563   0.360612 
+1   2 
+0.5288553   0.360613 
+1   2 
+0.373078   0.43972 
+1   2 
+0.373079   0.43972 
+1   2 
+0.373078   0.439721 
+1   2 
+0.1477513   0.5229675 
+1   2 
+0.1477523   0.5229675 
+1   2 
+0.1477513   0.5229685 
+Fit Mean:  -0.1207233  Size:  0.5654133  Code:  1 
+Try Mean:  1  Size:  0.001 
+1   2 
+1   0.001 
+1   2 
+1   0.001 
+1   2 
+1.000001   0.001 
+1   2 
+1   0.001001 
+1   2 
+0.9997397   0.001 
+1   2 
+0.9997407   0.001 
+1   2 
+0.9997397   0.001001 
+1   2 
+0.9994794   0.001067681 
+1   2 
+0.9994804   0.001067681 
+1   2 
+0.9994794   0.001068681 
+1   2 
+0.9992012   0.001203094 
+1   2 
+0.9992022   0.001203094 
+1   2 
+0.9992012   0.001204094 
+1   2 
+0.9988877   0.001410849 
+1   2 
+0.9988887   0.001410849 
+1   2 
+0.9988877   0.001411849 
+1   2 
+0.9985198   0.001700125 
+1   2 
+0.9985208   0.001700125 
+1   2 
+0.9985198   0.001701125 
+1   2 
+0.9980764   0.002084983 
+1   2 
+0.9980774   0.002084983 
+1   2 
+0.9980764   0.002085983 
+1   2 
+0.9975323   0.002584982 
+1   2 
+0.9975333   0.002584982 
+1   2 
+0.9975323   0.002585982 
+1   2 
+0.9968573   0.003226118 
+1   2 
+0.9968583   0.003226118 
+1   2 
+0.9968573   0.003227118 
+1   2 
+0.9960143   0.004042127 
+1   2 
+0.9960153   0.004042127 
+1   2 
+0.9960143   0.004043127 
+1   2 
+0.9949571   0.005076203 
+1   2 
+0.9949581   0.005076203 
+1   2 
+0.9949571   0.005077203 
+1   2 
+0.9936281   0.006383222 
+1   2 
+0.9936291   0.006383222 
+1   2 
+0.9936281   0.006384222 
+1   2 
+0.9919546   0.008032562 
+1   2 
+0.9919556   0.008032562 
+1   2 
+0.9919546   0.008033562 
+1   2 
+0.9898452   0.01011166 
+1   2 
+0.9898462   0.01011166 
+1   2 
+0.9898452   0.01011266 
+1   2 
+0.9871841   0.01273045 
+1   2 
+0.9871851   0.01273045 
+1   2 
+0.9871841   0.01273145 
+1   2 
+0.983825   0.01602686 
+1   2 
+0.983826   0.01602686 
+1   2 
+0.983825   0.01602786 
+1   2 
+0.9795817   0.02017361 
+1   2 
+0.9795827   0.02017361 
+1   2 
+0.9795817   0.02017461 
+1   2 
+0.9742178   0.02538656 
+1   2 
+0.9742188   0.02538656 
+1   2 
+0.9742178   0.02538756 
+1   2 
+0.9674315   0.03193474 
+1   2 
+0.9674325   0.03193474 
+1   2 
+0.9674315   0.03193574 
+1   2 
+0.9588363   0.04015251 
+1   2 
+0.9588373   0.04015251 
+1   2 
+0.9588363   0.04015351 
+1   2 
+0.9479358   0.05045395 
+1   2 
+0.9479368   0.05045395 
+1   2 
+0.9479358   0.05045495 
+1   2 
+0.9340876   0.06334947 
+1   2 
+0.9340886   0.06334947 
+1   2 
+0.9340876   0.06335047 
+1   2 
+0.9164555   0.07946486 
+1   2 
+0.9164565   0.07946486 
+1   2 
+0.9164555   0.07946586 
+1   2 
+0.8939396   0.09956197 
+1   2 
+0.8939406   0.09956197 
+1   2 
+0.8939396   0.09956297 
+1   2 
+0.8650755   0.1245601 
+1   2 
+0.8650765   0.1245601 
+1   2 
+0.8650755   0.1245611 
+1   2 
+0.8278785   0.155555 
+1   2 
+0.8278795   0.155555 
+1   2 
+0.8278785   0.155556 
+1   2 
+0.7795963   0.1938299 
+1   2 
+0.7795973   0.1938299 
+1   2 
+0.7795963   0.1938309 
+1   2 
+0.7162874   0.2408399 
+1   2 
+0.7162884   0.2408399 
+1   2 
+0.7162874   0.2408409 
+1   2 
+0.6320557   0.2981192 
+1   2 
+0.6320567   0.2981192 
+1   2 
+0.6320557   0.2981202 
+1   2 
+0.5175556   0.3669271 
+1   2 
+0.5175566   0.3669271 
+1   2 
+0.5175556   0.3669281 
+1   2 
+0.3569818   0.4468652 
+1   2 
+0.3569828   0.4468652 
+1   2 
+0.3569818   0.4468662 
+1   2 
+0.1244001   0.5294386 
+1   2 
+0.1244011   0.5294386 
+1   2 
+0.1244001   0.5294396 
+Fit Mean:  -0.126073  Size:  0.5631315  Code:  1 
+Try Mean:  0.75  Size:  10000 
+1   2 
+0.75   10000 
+1   2 
+0.75   10000 
+1   2 
+0.750001   10000 
+1   2 
+0.75   10000.01 
+1   2 
+0.5040921   10000 
+1   2 
+0.5040931   10000 
+1   2 
+0.5040921   10000.01 
+Fit Mean:  -0.7456332  Size:  10000  Code:  1 
+Try Mean:  0.75  Size:  1000 
+1   2 
+0.75   1000 
+1   2 
+0.75   1000 
+1   2 
+0.750001   1000 
+1   2 
+0.75   1000.001 
+1   2 
+0.5041857   1000 
+1   2 
+0.5041867   1000 
+1   2 
+0.5041857   1000.001 
+Fit Mean:  -0.750779  Size:  1000  Code:  1 
+Try Mean:  0.75  Size:  100 
+1   2 
+0.75   100 
+1   2 
+0.75   100 
+1   2 
+0.750001   100 
+1   2 
+0.75   100.0001 
+1   2 
+0.5051205   100 
+1   2 
+0.5051215   100 
+1   2 
+0.5051205   100.0001 
+Fit Mean:  -0.8040762  Size:  100.0001  Code:  1 
+Try Mean:  0.75  Size:  10 
+1   2 
+0.75   10 
+1   2 
+0.75   10 
+1   2 
+0.750001   10 
+1   2 
+0.75   10.00001 
+1   2 
+0.5143026   10.0004 
+1   2 
+0.5143036   10.0004 
+1   2 
+0.5143026   10.00041 
+Fit Mean:  -1.616329  Size:  10.01614  Code:  1 
+Try Mean:  0.75  Size:  1 
+1   2 
+0.75   1 
+1   2 
+0.75   1 
+1   2 
+0.750001   1 
+1   2 
+0.75   1.000001 
+1   2 
+0.583765   1.015585 
+1   2 
+0.583766   1.015585 
+1   2 
+0.583765   1.015586 
+1   2 
+0.3881568   1.038804 
+1   2 
+0.3881578   1.038804 
+1   2 
+0.3881568   1.038805 
+1   2 
+0.1626773   1.064088 
+1   2 
+0.1626783   1.064088 
+1   2 
+0.1626773   1.064089 
+Fit Mean:  -0.7421366  Size:  1.120639  Code:  1 
+Try Mean:  0.75  Size:  0.1 
+1   2 
+0.75   0.1 
+1   2 
+0.75   0.1 
+1   2 
+0.750001   0.1 
+1   2 
+0.75   0.100001 
+1   2 
+0.7104591   0.1673992 
+1   2 
+0.7104601   0.1673992 
+1   2 
+0.7104591   0.1674002 
+1   2 
+0.644821   0.2364919 
+1   2 
+0.644822   0.2364919 
+1   2 
+0.644821   0.2364929 
+1   2 
+0.5480092   0.312316 
+1   2 
+0.5480102   0.312316 
+1   2 
+0.5480092   0.312317 
+1   2 
+0.4078237   0.3970364 
+1   2 
+0.4078247   0.3970364 
+1   2 
+0.4078237   0.3970374 
+1   2 
+0.2012244   0.4869891 
+1   2 
+0.2012254   0.4869891 
+1   2 
+0.2012244   0.4869901 
+Fit Mean:  -0.08414725  Size:  0.5503306  Code:  1 
+Try Mean:  0.75  Size:  0.01 
+1   2 
+0.75   0.01 
+1   2 
+0.75   0.01 
+1   2 
+0.750001   0.01 
+1   2 
+0.75   0.010001 
+1   2 
+0.7454461   0.09454111 
+1   2 
+0.7454471   0.09454111 
+1   2 
+0.7454461   0.09454211 
+Fit Mean:  -0.9756383  Size:  4.438082  Code:  1 
+Try Mean:  0.75  Size:  0.001 
+1   2 
+0.75   0.001 
+1   2 
+0.75   0.001 
+1   2 
+0.750001   0.001 
+1   2 
+0.75   0.001001 
+1   2 
+0.7495377   0.08760338 
+1   2 
+0.7495387   0.08760338 
+1   2 
+0.7495377   0.08760438 
+Fit Mean:  -0.1892363  Size:  2.367316  Code:  1 
+Try Mean:  1.5  Size:  10000 
+1   2 
+1.5   10000 
+1   2 
+1.5   10000 
+1   2 
+1.500001   10000 
+1   2 
+1.5   10000.01 
+1   2 
+1.246455   10000 
+1   2 
+1.246456   10000 
+1   2 
+1.246455   10000.01 
+1   2 
+0.9856185   10000 
+1   2 
+0.9856195   10000 
+1   2 
+0.9856185   10000.01 
+Fit Mean:  -93.71077  Size:  10000  Code:  1 
+Try Mean:  1.5  Size:  1000 
+1   2 
+1.5   1000 
+1   2 
+1.5   1000 
+1   2 
+1.500001   1000 
+1   2 
+1.5   1000.001 
+1   2 
+1.246885   1000 
+1   2 
+1.246886   1000 
+1   2 
+1.246885   1000.001 
+1   2 
+0.986401   1000 
+1   2 
+0.986402   1000 
+1   2 
+0.986401   1000.001 
+Fit Mean:  -117.8164  Size:  1000  Code:  1 
+Try Mean:  1.5  Size:  100 
+1   2 
+1.5   100 
+1   2 
+1.5   100 
+1   2 
+1.500001   100 
+1   2 
+1.5   100.0001 
+1   2 
+1.25111   99.99998 
+1   2 
+1.251111   99.99998 
+1   2 
+1.25111   100.0001 
+1   2 
+0.994123   99.99997 
+1   2 
+0.994124   99.99997 
+1   2 
+0.994123   100.0001 
+1   2 
+0.7363018   99.99997 
+1   2 
+0.7363028   99.99997 
+1   2 
+0.7363018   100.0001 
+Fit Mean:  -3.663218  Size:  100.0001  Code:  1 
+Try Mean:  1.5  Size:  10 
+1   2 
+1.5   10 
+1   2 
+1.5   10 
+1   2 
+1.500001   10 
+1   2 
+1.5   10.00001 
+1   2 
+1.287106   9.998548 
+1   2 
+1.287107   9.998548 
+1   2 
+1.287106   9.998558 
+1   2 
+1.06198   9.997792 
+1   2 
+1.061981   9.997792 
+1   2 
+1.06198   9.997802 
+1   2 
+0.8268992   9.997651 
+1   2 
+0.8269002   9.997651 
+1   2 
+0.8268992   9.997661 
+1   2 
+0.5890698   9.997961 
+1   2 
+0.5890708   9.997961 
+1   2 
+0.5890698   9.997971 
+Fit Mean:  -3.040588  Size:  10.00595  Code:  1 
+Try Mean:  1.5  Size:  1 
+1   2 
+1.5   1 
+1   2 
+1.5   1 
+1   2 
+1.500001   1 
+1   2 
+1.5   1.000001 
+1   2 
+1.416314   0.9686179 
+1   2 
+1.416316   0.9686179 
+1   2 
+1.416314   0.9686189 
+1   2 
+1.328551   0.9414799 
+1   2 
+1.328553   0.9414799 
+1   2 
+1.328551   0.9414809 
+1   2 
+1.235643   0.9192931 
+1   2 
+1.235644   0.9192931 
+1   2 
+1.235643   0.9192941 
+1   2 
+1.136142   0.9028728 
+1   2 
+1.136143   0.9028728 
+1   2 
+1.136142   0.9028738 
+1   2 
+1.028053   0.8931416 
+1   2 
+1.028054   0.8931416 
+1   2 
+1.028053   0.8931426 
+1   2 
+0.9085787   0.8911038 
+1   2 
+0.9085797   0.8911038 
+1   2 
+0.9085787   0.8911048 
+1   2 
+0.7737197   0.8977511 
+1   2 
+0.7737207   0.8977511 
+1   2 
+0.7737197   0.8977521 
+1   2 
+0.6177312   0.9137809 
+1   2 
+0.6177322   0.9137809 
+1   2 
+0.6177312   0.9137819 
+1   2 
+0.4328038   0.9387519 
+1   2 
+0.4328048   0.9387519 
+1   2 
+0.4328038   0.9387529 
+1   2 
+0.2127017   0.9684395 
+1   2 
+0.2127027   0.9684395 
+1   2 
+0.2127017   0.9684405 
+Fit Mean:  -13.30067  Size:  2.222232  Code:  1 
+Try Mean:  1.5  Size:  0.1 
+1   2 
+1.5   0.1 
+1   2 
+1.5   0.1 
+1   2 
+1.500001   0.1 
+1   2 
+1.5   0.100001 
+1   2 
+1.488779   0.0234907 
+1   2 
+1.48878   0.0234907 
+1   2 
+1.488779   0.0234917 
+Fit Mean:  1.486038  Size:  -0.05945662  Code:  1 
+Try Mean:  1.5  Size:  0.01 
+1   2 
+1.5   0.01 
+1   2 
+1.5   0.01 
+1   2 
+1.500001   0.01 
+1   2 
+1.5   0.010001 
+Fit Mean:  1.498846  Size:  -0.07571642  Code:  1 
+Try Mean:  1.5  Size:  0.001 
+1   2 
+1.5   0.001 
+1   2 
+1.5   0.001 
+1   2 
+1.500001   0.001 
+1   2 
+1.5   0.001001 
+Fit Mean:  1.499884  Size:  -0.08572416  Code:  1 
+Try Mean:  2.25  Size:  10000 
+1   2 
+2.25   10000 
+1   2 
+2.25   10000 
+1   2 
+2.250002   10000 
+1   2 
+2.25   10000.01 
+1   2 
+2.033411   10000 
+1   2 
+2.033413   10000 
+1   2 
+2.033411   10000.01 
+1   2 
+1.805355   10000 
+1   2 
+1.805357   10000 
+1   2 
+1.805355   10000.01 
+1   2 
+1.565551   10000 
+1   2 
+1.565553   10000 
+1   2 
+1.565551   10000.01 
+1   2 
+1.314636   10000 
+1   2 
+1.314637   10000 
+1   2 
+1.314636   10000.01 
+1   2 
+1.055197   10000 
+1   2 
+1.055198   10000 
+1   2 
+1.055197   10000.01 
+1   2 
+0.7937197   10000 
+1   2 
+0.7937207   10000 
+1   2 
+0.7937197   10000.01 
+Fit Mean:  -4.867842  Size:  10000  Code:  1 
+Try Mean:  2.25  Size:  1000 
+1   2 
+2.25   1000 
+1   2 
+2.25   1000 
+1   2 
+2.250002   1000 
+1   2 
+2.25   1000.001 
+1   2 
+2.033958   1000 
+1   2 
+2.033961   1000 
+1   2 
+2.033958   1000.001 
+1   2 
+1.80646   1000 
+1   2 
+1.806461   1000 
+1   2 
+1.80646   1000.001 
+1   2 
+1.567208   1000 
+1   2 
+1.56721   1000 
+1   2 
+1.567208   1000.001 
+1   2 
+1.31681   1000 
+1   2 
+1.316812   1000 
+1   2 
+1.31681   1000.001 
+1   2 
+1.057795   1000 
+1   2 
+1.057796   1000 
+1   2 
+1.057795   1000.001 
+1   2 
+0.7965494   1000 
+1   2 
+0.7965504   1000 
+1   2 
+0.7965494   1000.001 
+Fit Mean:  -5.037018  Size:  1000  Code:  1 
+Try Mean:  2.25  Size:  100 
+1   2 
+2.25   100 
+1   2 
+2.25   100 
+1   2 
+2.250002   100 
+1   2 
+2.25   100.0001 
+1   2 
+2.039301   99.99994 
+1   2 
+2.039303   99.99994 
+1   2 
+2.039301   100 
+1   2 
+1.817262   99.99989 
+1   2 
+1.817264   99.99989 
+1   2 
+1.817262   99.99999 
+1   2 
+1.583445   99.99986 
+1   2 
+1.583447   99.99986 
+1   2 
+1.583445   99.99996 
+1   2 
+1.338173   99.99984 
+1   2 
+1.338174   99.99984 
+1   2 
+1.338173   99.99994 
+1   2 
+1.083441   99.99983 
+1   2 
+1.083442   99.99983 
+1   2 
+1.083441   99.99993 
+1   2 
+0.8246844   99.99982 
+1   2 
+0.8246854   99.99982 
+1   2 
+0.8246844   99.99992 
+Fit Mean:  -7.374042  Size:  99.99994  Code:  1 
+Try Mean:  2.25  Size:  10 
+1   2 
+2.25   10 
+1   2 
+2.25   10 
+1   2 
+2.250002   10 
+1   2 
+2.25   10.00001 
+1   2 
+2.082284   9.995712 
+1   2 
+2.082286   9.995712 
+1   2 
+2.082284   9.995722 
+1   2 
+1.905008   9.992077 
+1   2 
+1.90501   9.992077 
+1   2 
+1.905008   9.992087 
+1   2 
+1.717151   9.989128 
+1   2 
+1.717153   9.989128 
+1   2 
+1.717151   9.989138 
+1   2 
+1.517711   9.986891 
+1   2 
+1.517713   9.986891 
+1   2 
+1.517711   9.986901 
+1   2 
+1.305939   9.985374 
+1   2 
+1.30594   9.985374 
+1   2 
+1.305939   9.985384 
+1   2 
+1.081862   9.984558 
+1   2 
+1.081863   9.984558 
+1   2 
+1.081862   9.984568 
+1   2 
+0.847487   9.984369 
+1   2 
+0.847488   9.984369 
+1   2 
+0.847487   9.984379 
+1   2 
+0.6094208   9.984649 
+1   2 
+0.6094218   9.984649 
+1   2 
+0.6094208   9.984659 
+Fit Mean:  -3.675224  Size:  9.993948  Code:  1 
+Try Mean:  2.25  Size:  1 
+1   2 
+2.25   1 
+1   2 
+2.25   1 
+1   2 
+2.250002   1 
+1   2 
+2.25   1.000001 
+1   2 
+2.201229   0.9314153 
+1   2 
+2.201231   0.9314153 
+1   2 
+2.201229   0.9314163 
+1   2 
+2.153865   0.8617981 
+1   2 
+2.153867   0.8617981 
+1   2 
+2.153865   0.8617991 
+1   2 
+2.108151   0.7909895 
+1   2 
+2.108153   0.7909895 
+1   2 
+2.108151   0.7909905 
+1   2 
+2.064367   0.7187877 
+1   2 
+2.064369   0.7187877 
+1   2 
+2.064367   0.7187887 
+1   2 
+2.022842   0.6449345 
+1   2 
+2.022844   0.6449345 
+1   2 
+2.022842   0.6449355 
+1   2 
+1.983958   0.5690975 
+1   2 
+1.98396   0.5690975 
+1   2 
+1.983958   0.5690985 
+1   2 
+1.948162   0.4908447 
+1   2 
+1.948164   0.4908447 
+1   2 
+1.948162   0.4908457 
+1   2 
+1.915981   0.4096106 
+1   2 
+1.915983   0.4096106 
+1   2 
+1.915981   0.4096116 
+1   2 
+1.888028   0.3246461 
+1   2 
+1.88803   0.3246461 
+1   2 
+1.888028   0.3246471 
+1   2 
+1.865021   0.2349471 
+1   2 
+1.865022   0.2349471 
+1   2 
+1.865021   0.2349481 
+1   2 
+1.847791   0.1391485 
+1   2 
+1.847793   0.1391485 
+1   2 
+1.847791   0.1391495 
+1   2 
+1.83729   0.03536264 
+1   2 
+1.837291   0.03536264 
+1   2 
+1.83729   0.03536364 
+Fit Mean:  1.834566  Size:  -0.07906976  Code:  1 
+Try Mean:  2.25  Size:  0.1 
+1   2 
+2.25   0.1 
+1   2 
+2.25   0.1 
+1   2 
+2.250002   0.1 
+1   2 
+2.25   0.100001 
+Fit Mean:  2.244792  Size:  -0.03316707  Code:  1 
+Try Mean:  2.25  Size:  0.01 
+1   2 
+2.25   0.01 
+1   2 
+2.25   0.01 
+1   2 
+2.250002   0.01 
+1   2 
+2.25   0.010001 
+Fit Mean:  2.249485  Size:  -0.1335215  Code:  1 
+Try Mean:  2.25  Size:  0.001 
+1   2 
+2.25   0.001 
+1   2 
+2.25   0.001 
+1   2 
+2.250002   0.001 
+1   2 
+2.25   0.001001 
+Fit Mean:  2.249949  Size:  -0.1436074  Code:  1 
+> 
+> cat("Final Fit Mean: ", nb_fit_mu, " Size: ", nb_fit_size, " Code: ", nb_fit$code, " Try Size: ", try_size, "\n")
+Final Fit Mean:  2.249949  Size:  -0.1436074  Code:  1  Try Size:  1e+05 
+> 
+> ## Fit failed = reset parameters so graphing and output code can recognize this
+> if ((nb_fit_mu < 0) || (nb_fit_size < 0) || (nb_fit$code != 1))
++ {
++   nb_fit_mu = 0
++   nb_fit_size = 0
++ }
+> 
+> 
+> ## things can go wrong with fitting and we can still end up with invalid values
+> 
+> fit_nb = c()
+> included_fract = 0
+> if (nb_fit_mu > 0)
++ {
++   end_fract = pnbinom(end_i_for_fits, mu = nb_fit_mu, size=nb_fit_size)
++   start_fract = pnbinom(start_i_for_fits, mu = nb_fit_mu, size=nb_fit_size)
++   included_fract = end_fract-start_fract;
++ 
++   if (included_fract >= 0.01) {
++ 
++     ## Adjust so that we are back in full coords before making fit!!
++     if (num_per_bin > 1) 
++     {
++       nb_fit_mu = nb_fit_mu * num_per_bin
++     }
++     fit_nb = dnbinom(0:max(X$coverage), mu = nb_fit_mu, size=nb_fit_size)*inner_total/included_fract;
++   }
++ }
+> 
+> ## If an insufficient amount of fit was included, then invalidate it
+> if (included_fract < 0.01)
++ {
++   nb_fit_mu = 0
++   nb_fit_size = 0
++ }
+> 
+> f_p <- function(par) {
++ 
++   lambda = par[1];
++ 
++   if (lambda <= 0)
++   {
++     return(0);
++   }
++   
++ 	total <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{	
++     #cat(i, " ", lambda, "\n");
++ 		dist[i] <- dpois(i, lambda=lambda);
++ 		total <- total + dist[i] 
++ 	}
++ 	#print (total)
++ 
++  	l <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{
++ 		l <- l + ((X.for.fits[i]/inner_total)-(dist[i]/total))^2;
++ 	}
++ 	return(l);
++ }
+> 
+> 
+> ## Fit Poisson 
+> ## - allow fit to fail and set all params to zero/empty if that is the case
+> 
+> p_fit = NULL
+> try(suppressWarnings(p_fit<-nlm(f_p, c(m), print.level=this.print.level)))
+> 
+> fit_p = c()
+> if (!is.null(p_fit) && (p_fit$estimate[1] > 0))
++ {
++   #print (nb_fit$estimate[1])
++   p_fit_lambda = p_fit$estimate[1];
++   #print(0:max(X$coverage))
++ 
++   end_fract = ppois(end_i_for_fits, lambda = p_fit_lambda)
++   start_fract = ppois(start_i_for_fits, lambda = p_fit_lambda)
++   included_fract = end_fract-start_fract;
++ 
++   ## Adjust so that we are back in full coords before making fit!!
++   if (num_per_bin > 1) 
++   {
++     p_fit_lambda = p_fit_lambda * num_per_bin
++   }
++   fit_p<-dpois(0:max(X$coverage), lambda = p_fit_lambda)*inner_total/included_fract;
++ }
+> 
+> 
+> ## Graphing
+> ##
+> ## don't graph very high values with very little coverage
+> i<-max_i
+> while (i <= length(X$n) && X$n[i]>0.01*max_n)
++ {		
++ 	i <- i+1;
++ }
+> graph_end_i <-i
+> 
+> ## Ths leaves enough room to the right of the peak for the legend
+> graph_end_i = max(floor(2.2 * max_i), graph_end_i);
+> 
+> ## graphics settings
+> my_pch = 21
+> my_col = "black";
+> my_col_censored = "red";
+> 
+> if (pdf_output == 0) {
++   
++   ## bitmap() requires ghostscript to be installed.
++   ## taa=4, gaa=2 options NOT compatible with earlier R versions!
++   ## units = "px" NOT compatible with even earlier R versions!
++   
++   if(!capabilities(what = "png"))
++   {
++     ## fallback to ghostscript
++     bitmap(plot_file, height=6, width=7, type = "png16m", res = 72, pointsize=18)
++   } else {
++     ## use X11 function, which gives better resolution
++     png(plot_file, height=6, width=7, units ="in", res = 72, pointsize=18)
++     par(family="sans")
++   }
++ } else {
++   pdf(plot_file, height=6, width=7)
++   par(family="sans")
++ }
+> 
+> par(mar=c(5.5,7.5,3,1.5));
+> 
+> max_y = 0
+> if (plot_poisson) {
++ 	max_y = max(X$n, fit_p, fit_nb)
++ } else {
++ 	max_y = max(X$n, fit_nb)
++ }
+> 
+> plot(0:10, 0:10, type="n", lty="solid", ylim=c(0, max_y)*1.05, xlim=c(0, graph_end_i), lwd=1, xaxs="i", yaxs="i", axes=F, las=1, main="Coverage Distribution at Unique-Only Positions", xlab="Coverage depth (reads)", ylab="", cex.lab=1.2, cex.axis=1.2)
+> 
+> mtext(side = 2, text = "Number of reference positions", line = 5.5, cex=1.2)
+> 
+> sciNotation <- function(x, digits = 1) {
++     if (length(x) > 1) {
++         return(append(sciNotation(x[1]), sciNotation(x[-1])))     
++ 	} 
++     if (!x) return(0) 
++ 
++ 	exponent <- floor(log10(x)) 
++     base <- round(x / 10^exponent, digits)     
++ 	as.expression(substitute(base %*% 10^exponent, list(base = base, exponent = exponent))) 
++ }
+> 
+> #axis(2, cex.lab=1.2, las=1, cex.axis=1.2, labels=T, at=(0:6)*50000)
+> axis(2, cex.lab=1.2, las=1, cex.axis=1.2, at = axTicks(2), labels = sciNotation(axTicks(2), 1))
+> axis(1, cex.lab=1.2, cex.axis=1.2, labels=T)
+> box()
+> 
+> #graph the coverage as points
+> fit_data <- subset(X, (coverage>=start_i) & (coverage<=end_i) );
+> points(fit_data$coverage, fit_data$n, pch=my_pch, col=my_col, bg="white", cex=1.2)
+> 
+> #graph the censored coverage as red points
+> cat(start_i, " ", end_i, "\n", sep="")
+1 2
+> 
+> censored_data <- subset(X, (coverage<start_i) | (coverage>end_i) );
+> points(censored_data$coverage, censored_data$n, pch=my_pch, col=my_col_censored, bg="white", cex=1.2)
+> 
+> #graph the poisson fit IF REQUESTED
+> if (plot_poisson) {
++ 	lines(0:max(X$coverage), fit_p, lwd=3, lty="22", col="black");
++ }
+> 
+> #graph the negative binomial fit
+> if (nb_fit_mu > 0) {
++   lines(0:max(X$coverage), fit_nb, lwd=3, col="black");
++ }
+> 
+> if (plot_poisson) {
++ 	legend("topright", c("Coverage distribution", "Censored data", "Negative binomial", "Poisson"), lty=c("blank","blank","solid","22"), lwd=c(1,1,2,2), pch=c(my_pch, my_pch, -1, -1), col=c("black", "red", "black", "black"), bty="n")
++ } else {
++ 	legend("topright", c("Coverage distribution", "Censored data", "Negative binomial"), lty=c("blank","blank","solid"), lwd=c(1,1,2), pch=c(my_pch, my_pch, -1), col=c("black", "red", "black"), bty="n")
++ }
+> 
+> dev.off()
+null device 
+          1 
+> 
+> ## Fit the marginal value that we use for propagating deletions
+> 
+> if (nb_fit_mu > 0) {
++   cat(nb_fit_size, " ", nb_fit_mu, "\n")
++   deletion_propagation_coverage = suppressWarnings(qnbinom(deletion_propagation_pr_cutoff, size = nb_fit_size, mu = nb_fit_mu))
++ } else {
++   cat("Fallback to calculating off an estimate of just variance = mu + mu^2/size\n")
++   size_estimate = (1/(v-m))*(m*m)
++   cat("Mu estimate=", m," Size estimate =", size_estimate, "\n")
++   deletion_propagation_coverage = suppressWarnings(qnbinom(deletion_propagation_pr_cutoff, size = size_estimate, mu = m))
++   if (is.na(deletion_propagation_coverage) || is.nan(deletion_propagation_coverage) || (deletion_propagation_coverage < 1)) {
++     cat("Double fallback to calculating as just 10% of the mean\n")
++     deletion_propagation_coverage = m * 0.1
++   }
++ }
+Fallback to calculating off an estimate of just variance = mu + mu^2/size
+Mu estimate= 1.040258  Size estimate = -1.080452 
+Double fallback to calculating as just 10% of the mean
+> 
+> #Don't allow one read to indicate non-deleted regions
+> if (deletion_propagation_coverage < 1) {
++     deletion_propagation_coverage = 1
++ }
+> 
+> #This works fine with the negative values
+> #If we have both low fit coverage and low straight average coverage then we're deleted...
+> if ( (nb_fit_mu <= 3) && (m <= 3) ) {
++   deletion_propagation_coverage = -1
++ }
+> 
+> #print out statistics
+> 
+> print(nb_fit_size);
+[1] 0
+> print(nb_fit_mu);
+[1] 0
+> 
+> print(m)
+[1] 1.040258
+> print(v)
+[1] 0.03869929
+> print(D)
+[1] 0.03720164
+> 
+> print(deletion_propagation_coverage)
+[1] -1
+> 
+> warnings()
+> 

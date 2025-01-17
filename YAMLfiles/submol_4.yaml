@@ -1,0 +1,19 @@
+topology: 'linear'
+organism:
+  genus_species: 'Staphylococcus aureus'
+authors:
+- author:
+    last_name: 'Cooley'
+    first_name: 'Nicholas'
+    middle_initial: 'P'
+contact_info:
+  first_name: 'Nicholas'
+  last_name: 'Cooley'
+  email: 'npc19@pitt.edu'
+  organization: 'University of Pittsburgh'
+  department: 'Department of Biomedical Informatics'
+  phone: '412-624-5100'
+  street: '100 Technology Dr.'
+  city: 'Pittsburgh'
+  postal_code: '15219'
+  country: 'USA'
