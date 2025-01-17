@@ -24,28 +24,26 @@ Each step in more detail, including inputs, outputs, and comments:
 
 STEP 1: TRIM
 
-a. Inputs: raw `[sample_name].fastq.gz` files from HSSC
+2.1. Inputs: raw `[sample_name].fastq.gz` files from HSSC
 
-b. Outputs: 
+2.2. Outputs: 
 
-	i. `[sample_name]_trimmed.fastq.gz` files, name each file according to whether the reads came from an evolved lineage or an ancestor strain (see examples)
+	2.2.a. `[sample_name]_trimmed.fastq.gz` files, name each file according to whether the reads came from an evolved lineage or an ancestor strain (see examples)
 	
-	ii. 'assemble_job_map.txt' containing the file names for the trimmed reads of ancestor strains for assembly (next step)
+	2.2.b. 'assemble_job_map.txt' containing the file names for the trimmed reads of ancestor strains for assembly (next step)
 
-c. Comments: Run locally, use `R_scripts/TrimRawReadsByQuality.R` script
+3.3. Comments: Run locally, use `R_scripts/TrimRawReadsByQuality.R` script
 
 
 STEP 2: ASSEMBLE
 
-a. Inputs:
+2.1. Inputs:
 
-	i. trimmed.fastq.gz files (ancestors only)
+	2.1.a. trimmed.fastq.gz files (ancestors only)
 
-	ii. SPAdes assembly software - `Software/SPAdes.xxx` - there may be a newer version of SPAdes available
+	2.1.b. SPAdes assembly software - `Software/SPAdes.xxx` - there may be a newer version of SPAdes available
 
-	iii. Necessary scripts to run this job on the grid - `assemble.sh`, `assemble.sub`, `assemble_job_map.txt`
-
-		1. assemble_job_map.txt as I have it setup right now includes just 1 variable per line: ancestor_trimmed_reads.fastq.gz
+	2.1.c. Necessary scripts to run this job on the grid - `assemble.sh`, `assemble.sub`, `assemble_job_map.txt` (assemble_job_map.txt as I have it setup right now includes just 1 variable per line: ancestor_trimmed_reads.fastq.gz)
 
 b. Outputs: A directory containing a bunch of stuff. You want to grab the assembled contigs fasta file: `contigs.fasta`. I renamed these files `ancestor_X_contigs.fasta` and put them in the `assemblies/` directory.
 
@@ -61,9 +59,7 @@ a. Inputs:
 
 	ii. YAML files - not sure how to construct these myself, talk to Nick, I have provided examples and an R script that Nick gave me at some point. They are in the `YAMLfiles/` and `R_scripts/` directories, respectively, but potentially several changes need to be made to this script to update it and make it specific to your organism.
 
-	iii. Necessary scripts to run this job on the grid - pgap.sh, pgap.sub, pgap_job_map.txt
-
-		1. `pgap_job_map.txt` as I have it setup right now includes 6 variables per line: job_number, controller.yaml, submol.yaml, output_file_name, input_contigs.fasta
+	iii. Necessary scripts to run this job on the grid - pgap.sh, pgap.sub, pgap_job_map.txt (`pgap_job_map.txt` as I have it setup right now includes 6 variables per line: job_number, controller.yaml, submol.yaml, output_file_name, input_contigs.fasta)
 
 b. Outputs: Annotated assemblies (`pgap/Annot_X.gbk`)
 
