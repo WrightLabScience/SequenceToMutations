@@ -24,86 +24,84 @@ Each step in more detail, including inputs, outputs, and comments:
 
 STEP 1: TRIM
 
-2.1. Inputs: raw `[sample_name].fastq.gz` files from HSSC
+1. Inputs: raw `[sample_name].fastq.gz` files from HSSC
 
-2.2. Outputs: 
+2. Outputs: 
 
-	2.2.a. `[sample_name]_trimmed.fastq.gz` files, name each file according to whether the reads came from an evolved lineage or an ancestor strain (see examples)
+	a. `[sample_name]_trimmed.fastq.gz` files, name each file according to whether the reads came from an evolved lineage or an ancestor strain (see examples)
 	
-	2.2.b. 'assemble_job_map.txt' containing the file names for the trimmed reads of ancestor strains for assembly (next step)
+	b. 'assemble_job_map.txt' containing the file names for the trimmed reads of ancestor strains for assembly (next step)
 
-3.3. Comments: Run locally, use `R_scripts/TrimRawReadsByQuality.R` script
+3. Comments: Run locally, use `R_scripts/TrimRawReadsByQuality.R` script
 
 
 STEP 2: ASSEMBLE
 
-2.1. Inputs:
+1. Inputs:
 
-	2.1.a. trimmed.fastq.gz files (ancestors only)
+	a. trimmed.fastq.gz files (ancestors only)
 
-	2.1.b. SPAdes assembly software - `Software/SPAdes.xxx` - there may be a newer version of SPAdes available
+	b. SPAdes assembly software - `Software/SPAdes.xxx` - there may be a newer version of SPAdes available
 
-	2.1.c. Necessary scripts to run this job on the grid - `assemble.sh`, `assemble.sub`, `assemble_job_map.txt` (assemble_job_map.txt as I have it setup right now includes just 1 variable per line: ancestor_trimmed_reads.fastq.gz)
+	c. Necessary scripts to run this job on the grid - `assemble.sh`, `assemble.sub`, `assemble_job_map.txt` (assemble_job_map.txt as I have it setup right now includes just 1 variable per line: ancestor_trimmed_reads.fastq.gz)
 
-b. Outputs: A directory containing a bunch of stuff. You want to grab the assembled contigs fasta file: `contigs.fasta`. I renamed these files `ancestor_X_contigs.fasta` and put them in the `assemblies/` directory.
+2. Outputs: A directory containing a bunch of stuff. You want to grab the assembled contigs fasta file: `contigs.fasta`. I renamed these files `ancestor_X_contigs.fasta` and put them in the `assemblies/` directory.
 
-c. Comments: Run on grid (could run SPAdes locally, depending on your machine) - there are other assembly programs (just ask Nick) if you feel SPAdes is not ideal or appropriate for your project
+3. Comments: Run on grid (could run SPAdes locally, depending on your machine) - there are other assembly programs (just ask Nick) if you feel SPAdes is not ideal or appropriate for your project
 
 
 
 STEP 3: ANNOTATE
 
-a. Inputs:
+1. Inputs:
 
-	i. Assembled genome fasta files: `assemblies/ancestor_X_contigs.fasta`
+	a. Assembled genome fasta files: `assemblies/ancestor_X_contigs.fasta`
 
-	ii. YAML files - not sure how to construct these myself, talk to Nick, I have provided examples and an R script that Nick gave me at some point. They are in the `YAMLfiles/` and `R_scripts/` directories, respectively, but potentially several changes need to be made to this script to update it and make it specific to your organism.
+	b. YAML files - not sure how to construct these myself, talk to Nick, I have provided examples and an R script that Nick gave me at some point. They are in the `YAMLfiles/` and `R_scripts/` directories, respectively, but potentially several changes need to be made to this script to update it and make it specific to your organism.
 
-	iii. Necessary scripts to run this job on the grid - pgap.sh, pgap.sub, pgap_job_map.txt (`pgap_job_map.txt` as I have it setup right now includes 6 variables per line: job_number, controller.yaml, submol.yaml, output_file_name, input_contigs.fasta)
+	c. Necessary scripts to run this job on the grid - pgap.sh, pgap.sub, pgap_job_map.txt (`pgap_job_map.txt` as I have it setup right now includes 6 variables per line: job_number, controller.yaml, submol.yaml, output_file_name, input_contigs.fasta)
 
-b. Outputs: Annotated assemblies (`pgap/Annot_X.gbk`)
+2. Outputs: Annotated assemblies (`pgap/Annot_X.gbk`)
 
-c. Comments: This is probably the trickiest step that I am least famililar with, ask Nick for help, especially with properly constructing the .yaml files AND ensuring PGAP software and the required environment are good to on the grid.
+3. Comments: This is probably the trickiest step that I am least famililar with, ask Nick for help, especially with properly constructing the .yaml files AND ensuring PGAP software and the required environment are good to on the grid.
 
 
 
 STEP 4: BRESEQ
 
-a. Inputs: 
+1. Inputs: 
 
-	i. `evolved_[sample_name]_trimmed.fastq.gz` files for evolved lineages
+	a. `evolved_[sample_name]_trimmed.fastq.gz` files for evolved lineages
 
-	ii. `pgap/Annot_X.gbk` files - one annotated and assembled genome per unique ancestor strain, the output from previous steps
+	b. `pgap/Annot_X.gbk` files - one annotated and assembled genome per unique ancestor strain, the output from previous steps
 
-	iii. Read mapping software - Breseq, Bowtie2 (found in `Software` directory here)
+	c. Read mapping software - Breseq, Bowtie2 (found in `Software` directory here)
 
-	iv. Necessary scripts to run this job on the grid - `map.sh`, `map.sub`, `map_job_map.txt`
+	d. Necessary scripts to run this job on the grid - `map.sh`, `map.sub`, `map_job_map.txt` (`map_job_map.txt` as I have it setup right now incudes 2 variables per line: `evoled_[sample_name]_trimmed.fastq.gz`, `Annot_X.gbk` - I have provided `R_scripts/MakeBreseqMapTxt.R` to build the `map_job_map.txt` file programmatically but you will need to modify it to be specific to your project and sample names.)
 
-		1. `map_job_map.txt` as I have it setup right now incudes 2 variables per line: `evoled_[sample_name]_trimmed.fastq.gz`, `Annot_X.gbk` - I have provided `R_scripts/MakeBreseqMapTxt.R` to build the `map_job_map.txt` file programmatically but you will need to modify it to be specific to your project and sample names.
+2. Outputs: Each sample (evolved and ancestor) will have a breseq_output directory that contains a bunch of stuff that breseq/bowtie2 created.
 
-b. Outputs: Each sample (evolved and ancestor) will have a breseq_output directory that contains a bunch of stuff that breseq/bowtie2 created.
-
-c. Comments: Run on grid
+3. Comments: Run on grid
 
 
 
 STEP 5: PARSE_BRESEQ_SUBTRACT_BACKGROUND
 
-a. Inputs: breseq_output directory for each sample - I have examples in the `breseq_output` directory, they are pretty big files
+1. Inputs: breseq_output directory for each sample - I have examples in the `breseq_output` directory, they are pretty big files
 
-b. Outputs: `mutations_subtracted_ancestor/mutations_list.txt` files containing tables of the list of valid mutations for each sample (see comment below)
+2. Outputs: `mutations_subtracted_ancestor/mutations_list.txt` files containing tables of the list of valid mutations for each sample (see comment below)
 
-c. Comments: Run locally, use `R_scripts/SubtractAncestorMutations.R` script
+3. Comments: Run locally, use `R_scripts/SubtractAncestorMutations.R` script
 
 
 
 STEP 6: EXTRACT_MUTATION_INFO
 
-a. Inputs: `mutations_subtracted_ancestor/[sample_name]_mutations.txt` files
+1. Inputs: `mutations_subtracted_ancestor/[sample_name]_mutations.txt` files
 
-b. Outputs: `RdataFiles/mutations_list.Rdata` file
+2. Outputs: `RdataFiles/mutations_list.Rdata` file
 
-c. Comments: This script `R_scripts/ExtractMutationInfo.R` is a beast. I made it to parse my ~300 samples, which may not have been entirely representative of every combination of outputs that breseq can produce. For help troubleshooting this script if needed, email me at sam.blechman@gmail.com.
+3. Comments: This script `R_scripts/ExtractMutationInfo.R` is a beast. I made it to parse my ~300 samples, which may not have been entirely representative of every combination of outputs that breseq can produce. For help troubleshooting this script if needed, email me at sam.blechman@gmail.com.
 
 
 I have also provided another script called `R_scripts/ParseAncestorGBKs.R` which parses the `pgap/Annot_X.gbk` files and grabs a bunch of useful information for each strain: number of contigs, contig lengths, gene product names, pgaptmp IDs, direction of transcription, start and end positions, etc. This info may be useful when working through the `RdataFiles/mutations_list.Rdata` data.
