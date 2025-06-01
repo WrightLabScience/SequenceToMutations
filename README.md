@@ -4,13 +4,14 @@
 
 ### You just got your sequencing data (.fastq.gz files) back from the Health Sciences Sequencing Core and don't know what to do?? You're in the right place.
 
-This repository houses code for the 6-step sequencing analysis pipeline used by the Wright lab:
+This repository houses code for the 7-step sequencing analysis pipeline used by the Wright lab:
 1. TRIM: Trim raw sequencing reads based on quality score
 2. ASSEMBLE: Make genome assembly for each unique ancestor to be used as reference genome for mutation identification
-3. ANNOTATE: Annotate the assembled ancesotr genomes
+3. ANNOTATE: Annotate the assembled ancestor genomes
 4. BRESEQ: Run breseq to identify mutations that occurred in evolved lineages by mapping their reads to their corresponding annotated and assembled ancestor genomes
 5. PARSE_BRESEQ_SUBTRACT_BACKGROUND: Parse breseq output to produce a list of mutations for each evolved lineage + background subtraction (remove mutations that show up in ancestor from evolved lineages)
 6. EXTRACT_MUTATION_INFO: Further parse the subtracted breseq output to extract the pertinent mutation information (gene name, position, type of mutation, etc.)
+7. IDENTIFY_ENRICHED_MUTATIONS: Identify genes that had mutations at a statistically higher frequency in one group vs. another.
 
 Each step uses different scripts and may be run locally or on the Open Science Grid (OSG or "the grid") for parallelization. Steps that recommend the grid use software that may have environment requirements you won't want to deal with on your own machine.
 
@@ -32,7 +33,7 @@ STEP 1: TRIM
 	
 	b. 'assemble_job_map.txt' containing the file names for the trimmed reads of ancestor strains for assembly (next step)
 
-3. Comments: Run locally, use `R_scripts/TrimRawReadsByQuality.R` script
+3. Comments: Run locally, use `R_scripts/001_TrimRawReadsByQuality.R` script
 
 
 STEP 2: ASSEMBLE
@@ -63,6 +64,8 @@ STEP 3: ANNOTATE
 
 2. Outputs: Annotated assemblies (`pgap/Annot_X.gbk`)
 
+ 	a. I have provided another script called `R_scripts/003_ParseAncestorGBKs.R` which parses the `pgap/Annot_X.gbk` files and grabs a bunch of useful information about the annotated assembled genomes for each strain: number of contigs, contig lengths, gene product names, pgaptmp IDs, direction of transcription, start and end positions, etc. This info is necessary for step 7. The output of `R_scripts/ParseAncestorGBKs.R` is a list of data.frames stored in: `RdataFiles/ancestor_gbk_dataframes.Rdata`.
+
 3. Comments: This is probably the trickiest step that I am least famililar with, ask Nick for help, especially with properly constructing the .yaml files AND ensuring PGAP software and the required environment are good to on the grid.
 
 
@@ -77,7 +80,7 @@ STEP 4: BRESEQ
 
 	c. Read mapping software - Breseq, Bowtie2 (found in `Software` directory here)
 
-	d. Necessary scripts to run this job on the grid - `map.sh`, `map.sub`, `map_job_map.txt` (`map_job_map.txt` as I have it setup right now incudes 2 variables per line: `evoled_[sample_name]_trimmed.fastq.gz`, `Annot_X.gbk` - I have provided `R_scripts/MakeBreseqMapTxt.R` to build the `map_job_map.txt` file programmatically but you will need to modify it to be specific to your project and sample names.)
+	d. Necessary scripts to run this job on the grid - `map.sh`, `map.sub`, `map_job_map.txt` (`map_job_map.txt` as I have it setup right now incudes 2 variables per line: `evoled_[sample_name]_trimmed.fastq.gz`, `Annot_X.gbk` - I have provided `R_scripts/004_MakeBreseqMapTxt.R` to build the `map_job_map.txt` file programmatically but you will need to modify it to be specific to your project and sample names.)
 
 2. Outputs: Each sample (evolved and ancestor) will have a breseq_output directory that contains a bunch of stuff that breseq/bowtie2 created.
 
@@ -91,7 +94,7 @@ STEP 5: PARSE_BRESEQ_SUBTRACT_BACKGROUND
 
 2. Outputs: `mutations_subtracted_ancestor/mutations_list.txt` files containing tables of the list of valid mutations for each sample (see comment below)
 
-3. Comments: Run locally, use `R_scripts/SubtractAncestorMutations.R` script
+3. Comments: Run locally, use `R_scripts/005_SubtractAncestorMutations.R` script
 
 
 
@@ -101,10 +104,17 @@ STEP 6: EXTRACT_MUTATION_INFO
 
 2. Outputs: `RdataFiles/mutations_list.Rdata` file
 
-3. Comments: This script `R_scripts/ExtractMutationInfo.R` is a beast. I made it to parse my ~300 samples, which may not have been entirely representative of every combination of outputs that breseq can produce. For help troubleshooting this script if needed, email me at sam.blechman@gmail.com.
+3. Comments: This script `R_scripts/006_ExtractMutationInfo.R` is a beast. I made it to parse my ~300 samples, which may not have been entirely representative of every combination of outputs that breseq can produce. For help troubleshooting this script if needed, email me at sam.blechman@gmail.com.
 
 
-I have also provided another script called `R_scripts/ParseAncestorGBKs.R` which parses the `pgap/Annot_X.gbk` files and grabs a bunch of useful information for each strain: number of contigs, contig lengths, gene product names, pgaptmp IDs, direction of transcription, start and end positions, etc. This info may be useful when working through the `RdataFiles/mutations_list.Rdata` data.
+
+STEP 7: IDENTIFY_ENRICHED_MUTATIONS
+
+1. Inputs: `RdataFiles/mutations_list.Rdata` and `RdataFiles/ancestor_gbk_dataframes.Rdata`.
+
+2. Outputs: Two plots showing enriched mutations. You could also save the `data.frame` called `sig_genes` that gets created in this step.
+
+3. Comments: The script `R+scripts/007_IdentifySigGenes.R` looks through the mutations in all the lineages in each group (e.g., VAN-exposed and VAN-unexposed) and counts the number lineages in each group that has any mutation in each gene. It then "scores" each gene according to how enriched each group is in mutations in that gene. To visualize this, two plots are made: i) an X-Y scatter plot showing the proportion of each group that had a mutation in that gene (`mutsXY()`) and ii) a volcano plot showing statistical significance vs. effect size (`volcano()`).
 
 
 Why is step 5 necessary, you ask? Good question, I answer!
