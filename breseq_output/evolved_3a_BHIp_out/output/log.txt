@@ -1,0 +1,4 @@
+Wed Apr 17 20:11:58 2024
+
+breseq -r Annot_03.gbk 3a+_BHI_c50_trimmed.fastq.gz -o 3a+_BHI_c50_out -j 8
+

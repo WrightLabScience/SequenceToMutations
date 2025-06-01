@@ -1,0 +1,410 @@
+{
+  "accepted_pos_hash_score_distribution": {
+    "10": 1,
+    "11": 5,
+    "13": 1,
+    "14": 1,
+    "15": 2,
+    "17": 1,
+    "18": 1,
+    "25": 1,
+    "3": 6,
+    "33": 1,
+    "4": 5,
+    "5": 7,
+    "6": 2,
+    "7": 7,
+    "8": 4,
+    "9": 1
+  },
+  "max_sam_base_quality_score": 0,
+  "observed_pos_hash_score_distribution": null,
+  "read_file": {
+    "4a+_BHI_c50_trimmed": {
+      "num_total_bases": 61522610,
+      "num_total_reads": 546558,
+      "num_unmatched_bases": 2995950,
+      "num_unmatched_reads": 23775
+    }
+  },
+  "reference": [
+    {
+      "bases_mapped_to_reference": 7249685.96666666,
+      "reads_mapped_to_reference": 64645.5333333334
+    },
+    {
+      "bases_mapped_to_reference": 5810960.83333333,
+      "reads_mapped_to_reference": 52047.25
+    },
+    {
+      "bases_mapped_to_reference": 4047161.1,
+      "reads_mapped_to_reference": 35991.7333333333
+    },
+    {
+      "bases_mapped_to_reference": 3056264.66666667,
+      "reads_mapped_to_reference": 27271.3333333333
+    },
+    {
+      "bases_mapped_to_reference": 2820629.56666667,
+      "reads_mapped_to_reference": 25156.7833333333
+    },
+    {
+      "bases_mapped_to_reference": 2717942.16666667,
+      "reads_mapped_to_reference": 24394.8333333333
+    },
+    {
+      "bases_mapped_to_reference": 3073733.08571429,
+      "reads_mapped_to_reference": 27593.1761904762
+    },
+    {
+      "bases_mapped_to_reference": 2892335.45238095,
+      "reads_mapped_to_reference": 25862.6428571429
+    },
+    {
+      "bases_mapped_to_reference": 1534829.16666667,
+      "reads_mapped_to_reference": 13613.5
+    },
+    {
+      "bases_mapped_to_reference": 1535016.83333333,
+      "reads_mapped_to_reference": 13701.8333333333
+    },
+    {
+      "bases_mapped_to_reference": 1353587.66666667,
+      "reads_mapped_to_reference": 12148.7380952381
+    },
+    {
+      "bases_mapped_to_reference": 1312186.66666667,
+      "reads_mapped_to_reference": 11619.1666666667
+    },
+    {
+      "bases_mapped_to_reference": 1358231.66666667,
+      "reads_mapped_to_reference": 12227.3333333333
+    },
+    {
+      "bases_mapped_to_reference": 1114655.06666667,
+      "reads_mapped_to_reference": 9900.46666666667
+    },
+    {
+      "bases_mapped_to_reference": 1064375.5,
+      "reads_mapped_to_reference": 9533.0
+    },
+    {
+      "bases_mapped_to_reference": 1074282.7047619,
+      "reads_mapped_to_reference": 9622.23571428571
+    },
+    {
+      "bases_mapped_to_reference": 1054771.0,
+      "reads_mapped_to_reference": 9547.0
+    },
+    {
+      "bases_mapped_to_reference": 1090648.5,
+      "reads_mapped_to_reference": 9917.5
+    },
+    {
+      "bases_mapped_to_reference": 910451.333333333,
+      "reads_mapped_to_reference": 8182.33333333333
+    },
+    {
+      "bases_mapped_to_reference": 948267.4,
+      "reads_mapped_to_reference": 8473.46666666667
+    },
+    {
+      "bases_mapped_to_reference": 845518.285714286,
+      "reads_mapped_to_reference": 7571.89285714286
+    },
+    {
+      "bases_mapped_to_reference": 888987.833333333,
+      "reads_mapped_to_reference": 8182.33333333333
+    },
+    {
+      "bases_mapped_to_reference": 662490.785714286,
+      "reads_mapped_to_reference": 5901.05952380952
+    },
+    {
+      "bases_mapped_to_reference": 621628.333333333,
+      "reads_mapped_to_reference": 5595.40476190476
+    },
+    {
+      "bases_mapped_to_reference": 831583.0,
+      "reads_mapped_to_reference": 7391.0
+    },
+    {
+      "bases_mapped_to_reference": 703301.0,
+      "reads_mapped_to_reference": 6203.57142857143
+    },
+    {
+      "bases_mapped_to_reference": 695763.833333333,
+      "reads_mapped_to_reference": 6216.33333333333
+    },
+    {
+      "bases_mapped_to_reference": 624890.0,
+      "reads_mapped_to_reference": 5581.57142857143
+    },
+    {
+      "bases_mapped_to_reference": 635075.0,
+      "reads_mapped_to_reference": 5774.5
+    },
+    {
+      "bases_mapped_to_reference": 389957.333333333,
+      "reads_mapped_to_reference": 3436.5
+    },
+    {
+      "bases_mapped_to_reference": 802046.333333333,
+      "reads_mapped_to_reference": 7243.66666666667
+    },
+    {
+      "bases_mapped_to_reference": 400231.0,
+      "reads_mapped_to_reference": 3534.0
+    },
+    {
+      "bases_mapped_to_reference": 414192.666666667,
+      "reads_mapped_to_reference": 3683.83333333333
+    },
+    {
+      "bases_mapped_to_reference": 429707.333333333,
+      "reads_mapped_to_reference": 3773.7380952381
+    },
+    {
+      "bases_mapped_to_reference": 343097.066666667,
+      "reads_mapped_to_reference": 3064.8
+    },
+    {
+      "bases_mapped_to_reference": 343905.833333333,
+      "reads_mapped_to_reference": 3109.33333333333
+    },
+    {
+      "bases_mapped_to_reference": 314275.619047619,
+      "reads_mapped_to_reference": 2791.64285714286
+    },
+    {
+      "bases_mapped_to_reference": 234709.5,
+      "reads_mapped_to_reference": 2103.0
+    },
+    {
+      "bases_mapped_to_reference": 226549.333333333,
+      "reads_mapped_to_reference": 2067.66666666667
+    },
+    {
+      "bases_mapped_to_reference": 200871.5,
+      "reads_mapped_to_reference": 1774.5
+    },
+    {
+      "bases_mapped_to_reference": 284806.666666667,
+      "reads_mapped_to_reference": 2528.0
+    },
+    {
+      "bases_mapped_to_reference": 120633.833333333,
+      "reads_mapped_to_reference": 1077.83333333333
+    },
+    {
+      "bases_mapped_to_reference": 103227.833333333,
+      "reads_mapped_to_reference": 934.666666666667
+    },
+    {
+      "bases_mapped_to_reference": 98655.3333333333,
+      "reads_mapped_to_reference": 911.166666666667
+    },
+    {
+      "bases_mapped_to_reference": 73349.3333333333,
+      "reads_mapped_to_reference": 669.666666666667
+    },
+    {
+      "bases_mapped_to_reference": 61710.3333333333,
+      "reads_mapped_to_reference": 557.666666666667
+    },
+    {
+      "bases_mapped_to_reference": 49509.0,
+      "reads_mapped_to_reference": 454.0
+    },
+    {
+      "bases_mapped_to_reference": 177477.666666667,
+      "reads_mapped_to_reference": 1814.33333333333
+    },
+    {
+      "bases_mapped_to_reference": 57029.7333333333,
+      "reads_mapped_to_reference": 493.866666666667
+    },
+    {
+      "bases_mapped_to_reference": 42431.0,
+      "reads_mapped_to_reference": 395.666666666667
+    },
+    {
+      "bases_mapped_to_reference": 43067.3333333333,
+      "reads_mapped_to_reference": 389.0
+    },
+    {
+      "bases_mapped_to_reference": 37383.0,
+      "reads_mapped_to_reference": 340.166666666667
+    },
+    {
+      "bases_mapped_to_reference": 43173.1666666667,
+      "reads_mapped_to_reference": 408.666666666667
+    },
+    {
+      "bases_mapped_to_reference": 87928.0,
+      "reads_mapped_to_reference": 879.333333333333
+    },
+    {
+      "bases_mapped_to_reference": 154538.0,
+      "reads_mapped_to_reference": 1438.57142857143
+    },
+    {
+      "bases_mapped_to_reference": 17632.8333333333,
+      "reads_mapped_to_reference": 157.333333333333
+    },
+    {
+      "bases_mapped_to_reference": 14001.9666666667,
+      "reads_mapped_to_reference": 119.566666666667
+    },
+    {
+      "bases_mapped_to_reference": 8364.0,
+      "reads_mapped_to_reference": 81.0714285714286
+    },
+    {
+      "bases_mapped_to_reference": 8435.33333333333,
+      "reads_mapped_to_reference": 82.5
+    },
+    {
+      "bases_mapped_to_reference": 12405.3333333333,
+      "reads_mapped_to_reference": 119.666666666667
+    },
+    {
+      "bases_mapped_to_reference": 13959.3333333333,
+      "reads_mapped_to_reference": 139.333333333333
+    },
+    {
+      "bases_mapped_to_reference": 18254.3333333333,
+      "reads_mapped_to_reference": 159.666666666667
+    },
+    {
+      "bases_mapped_to_reference": 16469.3333333333,
+      "reads_mapped_to_reference": 156.333333333333
+    },
+    {
+      "bases_mapped_to_reference": 3981.9,
+      "reads_mapped_to_reference": 35.9666666666667
+    },
+    {
+      "bases_mapped_to_reference": 11661.3333333333,
+      "reads_mapped_to_reference": 108.333333333333
+    },
+    {
+      "bases_mapped_to_reference": 4294.0,
+      "reads_mapped_to_reference": 38.8333333333333
+    },
+    {
+      "bases_mapped_to_reference": 3550.0,
+      "reads_mapped_to_reference": 34.8333333333333
+    },
+    {
+      "bases_mapped_to_reference": 2826.0,
+      "reads_mapped_to_reference": 31.6666666666667
+    },
+    {
+      "bases_mapped_to_reference": 7542.06666666667,
+      "reads_mapped_to_reference": 72.2
+    },
+    {
+      "bases_mapped_to_reference": 4638.16666666667,
+      "reads_mapped_to_reference": 43.1666666666667
+    },
+    {
+      "bases_mapped_to_reference": 5646.16666666667,
+      "reads_mapped_to_reference": 56.1666666666667
+    },
+    {
+      "bases_mapped_to_reference": 6933.16666666667,
+      "reads_mapped_to_reference": 62.1666666666667
+    },
+    {
+      "bases_mapped_to_reference": 4630.5,
+      "reads_mapped_to_reference": 53.5
+    },
+    {
+      "bases_mapped_to_reference": 8162.33333333333,
+      "reads_mapped_to_reference": 72.0
+    },
+    {
+      "bases_mapped_to_reference": 6488.0,
+      "reads_mapped_to_reference": 63.6666666666667
+    },
+    {
+      "bases_mapped_to_reference": 905.833333333333,
+      "reads_mapped_to_reference": 11.1666666666667
+    },
+    {
+      "bases_mapped_to_reference": 2226.9,
+      "reads_mapped_to_reference": 19.9666666666667
+    },
+    {
+      "bases_mapped_to_reference": 972.333333333333,
+      "reads_mapped_to_reference": 9.16666666666667
+    },
+    {
+      "bases_mapped_to_reference": 5476.0,
+      "reads_mapped_to_reference": 53.6666666666667
+    },
+    {
+      "bases_mapped_to_reference": 957.0,
+      "reads_mapped_to_reference": 10.0
+    },
+    {
+      "bases_mapped_to_reference": 1663.16666666667,
+      "reads_mapped_to_reference": 16.1666666666667
+    },
+    {
+      "bases_mapped_to_reference": 6749.66666666667,
+      "reads_mapped_to_reference": 62.6666666666667
+    },
+    {
+      "bases_mapped_to_reference": 1420.0,
+      "reads_mapped_to_reference": 17.5
+    },
+    {
+      "bases_mapped_to_reference": 2227.0,
+      "reads_mapped_to_reference": 25.3333333333333
+    },
+    {
+      "bases_mapped_to_reference": 1428.66666666667,
+      "reads_mapped_to_reference": 14.6666666666667
+    },
+    {
+      "bases_mapped_to_reference": 183.5,
+      "reads_mapped_to_reference": 3.0
+    },
+    {
+      "bases_mapped_to_reference": 868.5,
+      "reads_mapped_to_reference": 9.0
+    },
+    {
+      "bases_mapped_to_reference": 84.6666666666667,
+      "reads_mapped_to_reference": 1.33333333333333
+    },
+    {
+      "bases_mapped_to_reference": 64.0,
+      "reads_mapped_to_reference": 1.33333333333333
+    },
+    {
+      "bases_mapped_to_reference": 0.0,
+      "reads_mapped_to_reference": 0.0
+    },
+    {
+      "bases_mapped_to_reference": 0.0,
+      "reads_mapped_to_reference": 0.0
+    },
+    {
+      "bases_mapped_to_reference": 16.0,
+      "reads_mapped_to_reference": 0.25
+    },
+    {
+      "bases_mapped_to_reference": 0.0,
+      "reads_mapped_to_reference": 0.0
+    }
+  ],
+  "total_bases": 61522610,
+  "total_bases_mapped_to_references": 58268841,
+  "total_reads": 546558,
+  "total_reads_mapped_to_references": 521686,
+  "total_unmatched_bases": 2995950,
+  "total_unmatched_reads": 23775
+}

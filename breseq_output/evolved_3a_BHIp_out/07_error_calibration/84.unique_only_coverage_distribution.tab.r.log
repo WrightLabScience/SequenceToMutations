@@ -1,0 +1,1739 @@
+
+R version 4.3.1 (2023-06-16) -- "Beagle Scouts"
+Copyright (C) 2023 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> ##
+> ##
+> ## AUTHORS
+> ##
+> ## Jeffrey E. Barrick <jeffrey.e.barrick@gmail.com>
+> ##
+> ## LICENSE AND COPYRIGHT
+> ##
+> ## Copyright (c) 2008-2010 Michigan State University
+> ## Copyright (c) 2011-2022 The University of Texas at Austin
+> ##
+> ## breseq is free software; you can redistribute it and/or modify it under the
+> ## terms the GNU General Public License as published by the Free Software
+> ## Foundation; either version 1, or (at your option) any later version.
+> ##
+> ##
+> 
+> ## Arguments:
+> ##   distribution_file=/path/to/input 
+> ##   plot_file=/path/to/output 
+> ##   deletion_propagation_pr_cutoff=float
+> ##   plot_poisson=0 or 1
+> ##   pdf_output=0 or 1
+> 
+> ## Returns these values printed out to output log
+> ## 
+> ##  1. print(nb_fit_size); # 0 if fit failed
+> ##  2. print(nb_fit_mu);   # 0 if fit failed
+> ##  3. print(m)q
+> ##  4. print(v)
+> ##  5. print(D)
+> ##  6. print(deletion_propagation_coverage)
+> ##     -1 if it was <1 after fitting (implying reference sequence is deleted)
+> ##
+> 
+> plot_poisson = 0;
+> pdf_output = 1;
+> 
+> this.print.level = 0
+> #this.print.level = 2
+> 
+> for (e in commandArgs(TRUE)) {
++   ta = strsplit(e,"=",fixed=TRUE)[[1]]
++   if(length(ta)>1) {
++     temp = ta[2]
++     assign(ta[1],temp)
++     cat("assigned ",ta[1]," the value of |",temp,"|\n")
++   } else {
++     assign(ta[[1]][1],TRUE)
++     cat("assigned ",ta[1]," the value of TRUE\n")
++   }
++ }
+assigned  distribution_file  the value of | 3a+_BHI_c50_out/07_error_calibration/84.unique_only_coverage_distribution.tab |
+assigned  plot_file  the value of | 3a+_BHI_c50_out/output/calibration/84.unique_coverage.pdf |
+assigned  deletion_propagation_pr_cutoff  the value of | 0.00258544 |
+> 
+> deletion_propagation_pr_cutoff = as.numeric(deletion_propagation_pr_cutoff);
+> 
+> ## initialize values to be filled in
+> nb_fit_mu = 0
+> nb_fit_size = 0
+> m = 0
+> v = 0
+> D = 0
+> deletion_propagation_coverage = -1
+> 
+> min_fraction_included_in_nb_fit = 0.01
+> 
+> #load data
+> X<-read.table(distribution_file, header=T)
+> 
+> #table might be empty
+> if (nrow(X) == 0)
++ {
++   #print out statistics
++   
++   print(nb_fit_size);
++   print(nb_fit_mu);
++   
++   print(m)
++   print(v)
++   print(D)
++   
++   print(deletion_propagation_coverage)
++   
++   q()
++ }
+> 
+> #create the distribution vector and fit
+> Y<-rep(X$coverage, X$n)
+> m<-mean(Y)
+> v<-var(Y)
+> D<-v/m
+> 
+> ###
+> ## Smooth the distribution with a moving average window of size 5
+> ## so that we can more reliably find it's maximum value
+> ###
+> 
+> ma5 = c(1, 1, 1, 1, 1)/5;
+> 
+> ## filtering fails if there are too few points
+> if (nrow(X) >= 5) {
++   X$ma = filter(X$n, ma5)
++ } else {
++ 	X$ma = X$n
++ }
+> 
+> i<-0
+> max_n <- 0;
+> min_i <- max( trunc(m/4), 1 ); #prevents zero for pathological distributions
+> max_i <- i;
+> for (i in min_i:length(X$ma))
++ {		
++   #cat(i, "\n")
++ 	if (!is.na(X$ma[i]) && (X$ma[i] > max_n))
++ 	{
++ 		max_n = X$ma[i];
++ 		max_i = i;
++ 	}
++ }
+> 
+> ##
+> # Censor data on the right and left of the maximum
+> ##
+> 
+> start_i = max(floor(max_i*0.5), 1);
+> end_i = min(ceiling(max_i*1.5), length(X$ma));
+> 
+> if (start_i == end_i)
++ {
++   print(nb_fit_size);
++   print(nb_fit_mu);
++   
++   print(m)
++   print(v)
++   print(D)
++   
++   print(deletion_propagation_coverage)
++   
++   q()
++ }
+> 
+> cat("Fitting from coverage of ", start_i, " to ", end_i, ".\n", sep="")
+Fitting from coverage of 30 to 66.
+> 
+> ##
+> # Coarse grain so that we are only fitting a number of bins that is 1000-2000
+> #
+> # The later adjustment for doing the fits this way is to multiply the means
+> # of the negative binomial and poisson distributions by the binning number.
+> # (The size parameter of the negative binomial doesn't need to be adjusted.)
+> ##
+> 
+> 
+> num_per_bin = trunc((end_i - start_i) / 1000)
+> 
+> if (num_per_bin > 1) 
++ {
++   cat("Coarse-graining for fits\n")
++   start_i_for_fits = trunc(start_i/num_per_bin)
++   end_i_for_fits = ceiling(end_i/num_per_bin)
++   num_bins = end_i - start_i  + 1
++   cat("Fitting from coverage in adjusted bins ", start_i_for_fits, " to ", end_i_for_fits, ".\n", sep="")
++   cat("Number of bins ", num_bins, ". Each bin has ", num_per_bin, " coverage values.\n", sep="")
++ 
++   # Create a new vector where we've added together values in bins
++   X.for.fits = vector("double", end_i_for_fits)
++   for (i in start_i_for_fits:end_i_for_fits)
++   {
++     for (j in 1:num_per_bin)
++     {
++       if (i*num_per_bin+j <= length(X$n))
++       {
++         X.for.fits[i] = X.for.fits[i] + X$n[i*num_per_bin+j]
++       }
++     }
++   }
++ 
++ } else {
++   ## AVOID num_per_bin equalling zero!!
++   X.for.fits = X$n[1:end_i]
++   num_per_bin = 1
++   start_i_for_fits = start_i
++   end_i_for_fits = end_i
++ }
+> 
+> 
+> ##
+> # Now perform negative binomial fitting to the censored data
+> ##
+> 
+> inner_total<-0;
+> for (i in start_i_for_fits:end_i_for_fits)
++ {
++ 	inner_total = inner_total + X.for.fits[i]; 
++ }
+> # Yes: it's correct to use X here because we want the overall total total
+> total_total<-sum(X$n);
+> 
+> ## let's preconstruct these for speed
+> dist = vector("double", end_i_for_fits)
+> 
+> f_nb <- function(par) {
++ 
++ 	mu = par[1];
++ 	size = par[2];
++ 
++   if ((mu <= 0) || (size <= 0))
++   {
++     return(0);
++   }
++   
++   cat(start_i_for_fits, " ", end_i_for_fits, "\n");
++   cat(mu, " ", size, "\n");
++   
++ 	dist<-c()
++ 	total <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{	
++ 		dist[i] <- dnbinom(i, size=size, mu=mu);
++ 		total <- total + dist[i] 
++ 	}
++ 	#print (mu, size)
++ 
++  	l <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{
++ 		l <- l + ((X.for.fits[i]/inner_total)-(dist[i]/total))^2;
++ 	}
++ 	return(l);
++ }
+> 
+> 
+> 
+> ## Fit negative binomial 
+> ## - allow fit to fail and set all params to zero/empty if that is the case
+> nb_fit = NULL
+> ## as.numeric prevents overflow in sums involving integers
+> mean_estimate = sum((as.numeric(1:end_i_for_fits)*as.numeric(X.for.fits)))/sum(as.numeric(X.for.fits))
+> 
+> nb_fit_mu = -1
+> nb_fit_size = -1
+> try_size = 100000
+> try_means_index = 1
+> #This is a list of different means to test <-  sometimes the actual mean doesn't lead to a fit
+> try_means = c(mean_estimate, 
++               end_i_for_fits, 
++               start_i_for_fits, 
++               1*(end_i_for_fits + start_i_for_fits)/4,
++               2*(end_i_for_fits + start_i_for_fits)/4,
++               3*(end_i_for_fits + start_i_for_fits)/4
++               )
+>               
+>               
+> nb_fit = c()
+> 
+> while ( ((nb_fit_mu < 0) || (nb_fit_size < 0) || (nb_fit$code != 1)) && (try_size > 0.001) && (try_means_index <= length(try_means)))
++ {
++   try_size = try_size / 10
++   try_mean = try_means[try_means_index]
++ 
++   ## SIZE ESTIMATE from the censored data can be negative, so try various values instead
++   cat("Try Mean: ", try_mean, " Size: ", try_size, "\n")
++ 
++   try( suppressWarnings(nb_fit<-nlm(f_nb, c(try_mean, try_size), iterlim=1000, print.level=this.print.level)) )
++ 
++   nb_fit_mu = nb_fit$estimate[1];
++   nb_fit_size = nb_fit$estimate[2];
++ 
++   cat("Fit Mean: ", nb_fit_mu, " Size: ", nb_fit_size, " Code: ", nb_fit$code, "\n")
++   
++   if (try_size <= 0.001) {
++     try_size = 100000
++     try_means_index = try_means_index + 1
++   }
++ }
+Try Mean:  39.5914  Size:  10000 
+30   66 
+39.5914   10000 
+30   66 
+39.5914   10000 
+30   66 
+39.59144   10000 
+30   66 
+39.5914   10000.01 
+30   66 
+39.59247   10000 
+30   66 
+39.59251   10000 
+30   66 
+39.59247   10000.01 
+30   66 
+43.81449   10000 
+30   66 
+43.81453   10000 
+30   66 
+43.81449   10000.01 
+30   66 
+49.27364   10000 
+30   66 
+49.27369   10000 
+30   66 
+49.27364   10000.01 
+30   66 
+64.16307   10000 
+30   66 
+64.16313   10000 
+30   66 
+64.16307   10000.01 
+30   66 
+59.8585   10000 
+30   66 
+59.85856   10000 
+30   66 
+59.8585   10000.01 
+30   66 
+61.74152   10000 
+30   66 
+61.74158   10000 
+30   66 
+61.74152   10000.01 
+30   66 
+61.67423   10000 
+30   66 
+61.67429   10000 
+30   66 
+61.67423   10000.01 
+30   66 
+61.67338   10000 
+30   66 
+61.67344   10000 
+30   66 
+61.67338   10000.01 
+30   66 
+61.67338   10000 
+30   66 
+61.67344   10000 
+30   66 
+61.67338   10000.01 
+Fit Mean:  61.67338  Size:  10000  Code:  2 
+Try Mean:  39.5914  Size:  1000 
+30   66 
+39.5914   1000 
+30   66 
+39.5914   1000 
+30   66 
+39.59144   1000 
+30   66 
+39.5914   1000.001 
+30   66 
+39.59257   1000 
+30   66 
+39.5926   1000 
+30   66 
+39.59257   1000.001 
+30   66 
+44.51974   999.9916 
+30   66 
+44.51979   999.9916 
+30   66 
+44.51974   999.9926 
+30   66 
+51.81394   999.9783 
+30   66 
+51.81399   999.9783 
+30   66 
+51.81394   999.9793 
+30   66 
+69.33681   999.9555 
+30   66 
+69.33688   999.9555 
+30   66 
+69.33681   999.9565 
+30   66 
+61.33789   999.9594 
+30   66 
+61.33795   999.9594 
+30   66 
+61.33789   999.9604 
+30   66 
+61.98278   999.959 
+30   66 
+61.98285   999.959 
+30   66 
+61.98278   999.96 
+30   66 
+61.85229   999.9596 
+30   66 
+61.85236   999.9596 
+30   66 
+61.85229   999.9606 
+30   66 
+61.85135   999.9601 
+30   66 
+61.85142   999.9601 
+30   66 
+61.85135   999.9611 
+30   66 
+61.85124   999.9608 
+30   66 
+61.8513   999.9608 
+30   66 
+61.85124   999.9618 
+30   66 
+61.85016   999.973 
+30   66 
+61.85022   999.973 
+30   66 
+61.85016   999.974 
+30   66 
+61.84896   999.9993 
+30   66 
+61.84902   999.9993 
+30   66 
+61.84896   1000 
+30   66 
+61.84667   1000.086 
+30   66 
+61.84673   1000.086 
+30   66 
+61.84667   1000.087 
+30   66 
+61.84316   1000.313 
+30   66 
+61.84322   1000.313 
+30   66 
+61.84316   1000.314 
+30   66 
+61.83731   1000.937 
+30   66 
+61.83737   1000.937 
+30   66 
+61.83731   1000.938 
+30   66 
+61.82785   1002.582 
+30   66 
+61.82791   1002.582 
+30   66 
+61.82785   1002.583 
+30   66 
+61.81235   1006.92 
+30   66 
+61.81241   1006.92 
+30   66 
+61.81235   1006.921 
+30   66 
+61.7873   1018.134 
+30   66 
+61.78736   1018.134 
+30   66 
+61.7873   1018.135 
+30   66 
+61.74811   1046.283 
+30   66 
+61.74817   1046.283 
+30   66 
+61.74811   1046.284 
+30   66 
+61.69269   1112.366 
+30   66 
+61.69275   1112.366 
+30   66 
+61.69269   1112.367 
+30   66 
+61.63056   1251.275 
+30   66 
+61.63063   1251.275 
+30   66 
+61.63056   1251.276 
+30   66 
+61.58977   1513.409 
+30   66 
+61.58983   1513.409 
+30   66 
+61.58977   1513.411 
+30   66 
+61.61005   1960.463 
+30   66 
+61.61011   1960.463 
+30   66 
+61.61005   1960.465 
+30   66 
+61.68126   2574.48 
+30   66 
+61.68132   2574.48 
+30   66 
+61.68126   2574.482 
+30   66 
+61.72904   3268.438 
+30   66 
+61.7291   3268.438 
+30   66 
+61.72904   3268.441 
+30   66 
+61.741   4158.404 
+30   66 
+61.74106   4158.404 
+30   66 
+61.741   4158.408 
+30   66 
+61.72067   5537.616 
+30   66 
+61.72074   5537.616 
+30   66 
+61.72067   5537.622 
+30   66 
+61.68219   7445.829 
+30   66 
+61.68225   7445.829 
+30   66 
+61.68219   7445.837 
+30   66 
+61.6529   9718.7 
+30   66 
+61.65296   9718.7 
+30   66 
+61.6529   9718.71 
+30   66 
+61.64018   12546.03 
+30   66 
+61.64024   12546.03 
+30   66 
+61.64018   12546.04 
+30   66 
+61.64228   16497.62 
+30   66 
+61.64234   16497.62 
+30   66 
+61.64228   16497.64 
+30   66 
+61.6533   21850.19 
+30   66 
+61.65336   21850.19 
+30   66 
+61.6533   21850.21 
+30   66 
+61.66298   28682.92 
+30   66 
+61.66304   28682.92 
+30   66 
+61.66298   28682.95 
+30   66 
+61.6665   37579.68 
+30   66 
+61.66656   37579.68 
+30   66 
+61.6665   37579.72 
+30   66 
+61.66397   49757.54 
+30   66 
+61.66403   49757.54 
+30   66 
+61.66397   49757.59 
+30   66 
+61.65824   66131.43 
+30   66 
+61.6583   66131.43 
+30   66 
+61.65824   66131.5 
+30   66 
+61.65325   87320.62 
+30   66 
+61.65331   87320.62 
+30   66 
+61.65325   87320.71 
+30   66 
+61.65099   114893.5 
+30   66 
+61.65105   114893.5 
+30   66 
+61.65099   114893.6 
+30   66 
+61.65142   151985.8 
+30   66 
+61.65148   151985.8 
+30   66 
+61.65142   151985.9 
+30   66 
+61.65332   201475 
+30   66 
+61.65339   201475 
+30   66 
+61.65332   201475.2 
+30   66 
+61.65509   265721.9 
+30   66 
+61.65515   265721.9 
+30   66 
+61.65509   265722.2 
+30   66 
+61.65584   352258.6 
+30   66 
+61.6559   352258.6 
+30   66 
+61.65584   352258.9 
+30   66 
+61.65549   467017.9 
+30   66 
+61.65555   467017.9 
+30   66 
+61.65549   467018.4 
+30   66 
+61.65455   617968 
+30   66 
+61.65461   617968 
+30   66 
+61.65455   617968.6 
+30   66 
+61.6537   812262 
+30   66 
+61.65376   812262 
+30   66 
+61.6537   812262.8 
+30   66 
+61.65336   1041537 
+30   66 
+61.65342   1041537 
+30   66 
+61.65336   1041538 
+30   66 
+61.65338   1423895 
+30   66 
+61.65344   1423895 
+30   66 
+61.65338   1423896 
+30   66 
+61.65368   1907823 
+30   66 
+61.65374   1907823 
+30   66 
+61.65368   1907825 
+30   66 
+61.65405   2908607 
+30   66 
+61.65411   2908607 
+30   66 
+61.65405   2908610 
+30   66 
+61.65411   3627712 
+30   66 
+61.65417   3627712 
+30   66 
+61.65411   3627715 
+30   66 
+61.65401   3603982 
+30   66 
+61.6541   3625339 
+30   66 
+61.65411   3627474 
+30   66 
+61.65411   3627688 
+30   66 
+61.65411   3627709 
+30   66 
+61.66027   3627712 
+30   66 
+61.64794   3627712 
+30   66 
+61.65411   3628074 
+30   66 
+61.65411   3627349 
+30   66 
+61.65403   3980120 
+30   66 
+61.6602   3980120 
+30   66 
+61.64787   3980120 
+30   66 
+61.65403   3980518 
+30   66 
+61.65403   3979722 
+30   66 
+61.6539   4980904 
+30   66 
+61.66006   4980904 
+30   66 
+61.64773   4980904 
+30   66 
+61.6539   4981402 
+30   66 
+61.6539   4980405 
+30   66 
+61.65383   5981687 
+30   66 
+61.66   5981687 
+30   66 
+61.64767   5981687 
+30   66 
+61.65383   5982285 
+30   66 
+61.65383   5981089 
+30   66 
+61.65382   6982470 
+30   66 
+61.65998   6982470 
+30   66 
+61.64765   6982470 
+30   66 
+61.65382   6983169 
+30   66 
+61.65382   6981772 
+30   66 
+61.65383   7983254 
+30   66 
+61.65999   7983254 
+30   66 
+61.64766   7983254 
+30   66 
+61.65383   7984052 
+30   66 
+61.65383   7982455 
+30   66 
+61.65384   8984037 
+30   66 
+61.66001   8984037 
+30   66 
+61.64768   8984037 
+30   66 
+61.65384   8984936 
+30   66 
+61.65384   8983139 
+Fit Mean:  61.65384  Size:  8984037  Code:  5 
+Try Mean:  39.5914  Size:  100 
+30   66 
+39.5914   100 
+30   66 
+39.5914   100 
+30   66 
+39.59144   100 
+30   66 
+39.5914   100.0001 
+30   66 
+39.59326   99.99995 
+30   66 
+39.5933   99.99995 
+30   66 
+39.59326   100 
+30   66 
+54.2291   98.55779 
+30   66 
+54.22915   98.55779 
+30   66 
+54.2291   98.55789 
+30   66 
+74.68466   96.97841 
+30   66 
+74.68474   96.97841 
+30   66 
+74.68466   96.9785 
+30   66 
+66.01201   96.95115 
+30   66 
+66.01207   96.95115 
+30   66 
+66.01201   96.95125 
+30   66 
+62.745   97.22242 
+30   66 
+62.74507   97.22242 
+30   66 
+62.745   97.22251 
+30   66 
+63.95036   97.14375 
+30   66 
+63.95043   97.14375 
+30   66 
+63.95036   97.14385 
+30   66 
+63.88366   97.18942 
+30   66 
+63.88372   97.18942 
+30   66 
+63.88366   97.18951 
+30   66 
+63.8673   97.24984 
+30   66 
+63.86737   97.24984 
+30   66 
+63.8673   97.24994 
+30   66 
+63.78594   97.80435 
+30   66 
+63.78601   97.80435 
+30   66 
+63.78594   97.80445 
+30   66 
+63.6763   99.06323 
+30   66 
+63.67636   99.06323 
+30   66 
+63.6763   99.06333 
+30   66 
+63.46077   102.7761 
+30   66 
+63.46083   102.7761 
+30   66 
+63.46077   102.7762 
+30   66 
+63.15477   110.5941 
+30   66 
+63.15484   110.5941 
+30   66 
+63.15477   110.5942 
+30   66 
+62.79884   125.1395 
+30   66 
+62.7989   125.1395 
+30   66 
+62.79884   125.1396 
+30   66 
+62.49075   151.0094 
+30   66 
+62.49082   151.0094 
+30   66 
+62.49075   151.0096 
+30   66 
+62.40582   194.8134 
+30   66 
+62.40588   194.8134 
+30   66 
+62.40582   194.8136 
+30   66 
+62.36471   253.0169 
+30   66 
+62.36477   253.0169 
+30   66 
+62.36471   253.0171 
+30   66 
+62.09152   342.9433 
+30   66 
+62.09159   342.9433 
+30   66 
+62.09152   342.9436 
+30   66 
+62.02831   458.2303 
+30   66 
+62.02837   458.2303 
+30   66 
+62.02831   458.2307 
+30   66 
+61.88589   612.2219 
+30   66 
+61.88596   612.2219 
+30   66 
+61.88589   612.2225 
+30   66 
+61.89712   817.6546 
+30   66 
+61.89718   817.6546 
+30   66 
+61.89712   817.6554 
+30   66 
+61.73765   1108.5 
+30   66 
+61.73772   1108.5 
+30   66 
+61.73765   1108.501 
+30   66 
+61.77679   1470.973 
+30   66 
+61.77685   1470.973 
+30   66 
+61.77679   1470.974 
+30   66 
+61.72677   1949.543 
+30   66 
+61.72684   1949.543 
+30   66 
+61.72677   1949.545 
+30   66 
+61.71331   2592.006 
+30   66 
+61.71337   2592.006 
+30   66 
+61.71331   2592.008 
+30   66 
+61.69726   3431.9 
+30   66 
+61.69732   3431.9 
+30   66 
+61.69726   3431.903 
+30   66 
+61.68745   4551.783 
+30   66 
+61.68752   4551.783 
+30   66 
+61.68745   4551.788 
+30   66 
+61.67883   6031.424 
+30   66 
+61.6789   6031.424 
+30   66 
+61.67883   6031.43 
+30   66 
+61.67299   7993.945 
+30   66 
+61.67305   7993.945 
+30   66 
+61.67299   7993.953 
+30   66 
+61.66815   10592.61 
+30   66 
+61.66821   10592.61 
+30   66 
+61.66815   10592.62 
+30   66 
+61.66476   14035.87 
+30   66 
+61.66482   14035.87 
+30   66 
+61.66476   14035.88 
+30   66 
+61.66202   18596.87 
+30   66 
+61.66208   18596.87 
+30   66 
+61.66202   18596.89 
+30   66 
+61.66007   24639.09 
+30   66 
+61.66013   24639.09 
+30   66 
+61.66007   24639.11 
+30   66 
+61.65852   32643.26 
+30   66 
+61.65858   32643.26 
+30   66 
+61.65852   32643.29 
+30   66 
+61.6574   43246.45 
+30   66 
+61.65746   43246.45 
+30   66 
+61.6574   43246.49 
+30   66 
+61.65651   57296.33 
+30   66 
+61.65657   57296.33 
+30   66 
+61.65651   57296.38 
+30   66 
+61.65588   75904.88 
+30   66 
+61.65594   75904.88 
+30   66 
+61.65588   75904.95 
+30   66 
+61.65537   100513.5 
+30   66 
+61.65543   100513.5 
+30   66 
+61.65537   100513.6 
+30   66 
+61.65501   133207 
+30   66 
+61.65507   133207 
+30   66 
+61.65501   133207.1 
+30   66 
+61.65472   176320.1 
+30   66 
+61.65478   176320.1 
+30   66 
+61.65472   176320.3 
+30   66 
+61.65451   234337 
+30   66 
+61.65457   234337 
+30   66 
+61.65451   234337.3 
+30   66 
+61.65435   310465.8 
+30   66 
+61.65441   310465.8 
+30   66 
+61.65435   310466.1 
+30   66 
+61.65422   412554.8 
+30   66 
+61.65429   412554.8 
+30   66 
+61.65422   412555.3 
+30   66 
+61.65416   520107.1 
+30   66 
+61.65422   520107.1 
+30   66 
+61.65416   520107.6 
+30   66 
+61.65411   627659.3 
+30   66 
+61.65417   627659.3 
+30   66 
+61.65411   627659.9 
+30   66 
+61.65407   735211.5 
+30   66 
+61.65414   735211.5 
+30   66 
+61.65407   735212.2 
+30   66 
+61.65404   842763.7 
+30   66 
+61.65411   842763.7 
+30   66 
+61.65404   842764.5 
+30   66 
+61.65403   950315.9 
+30   66 
+61.65409   950315.9 
+30   66 
+61.65403   950316.9 
+Fit Mean:  61.65403  Size:  950315.9  Code:  5 
+Try Mean:  39.5914  Size:  10 
+30   66 
+39.5914   10 
+30   66 
+39.5914   10 
+30   66 
+39.59144   10 
+30   66 
+39.5914   10.00001 
+30   66 
+39.59311   9.999097 
+30   66 
+39.59315   9.999097 
+30   66 
+39.59311   9.999107 
+30   66 
+51.65888   2.814912 
+30   66 
+51.65893   2.814912 
+30   66 
+51.65888   2.814914 
+30   66 
+55.12933   5.46522 
+30   66 
+55.12939   5.46522 
+30   66 
+55.12933   5.465226 
+30   66 
+59.92406   8.323038 
+30   66 
+59.92412   8.323038 
+30   66 
+59.92406   8.323046 
+30   66 
+64.74179   11.18523 
+30   66 
+64.74185   11.18523 
+30   66 
+64.74179   11.18524 
+30   66 
+91.79437   27.65331 
+30   66 
+76.23347   18.18072 
+30   66 
+76.23355   18.18072 
+30   66 
+76.23347   18.18074 
+30   66 
+77.24777   18.79627 
+30   66 
+77.24784   18.79627 
+30   66 
+77.24777   18.79629 
+30   66 
+77.03715   18.64035 
+30   66 
+77.03722   18.64035 
+30   66 
+77.03715   18.64037 
+30   66 
+77.05221   18.62067 
+30   66 
+77.05229   18.62067 
+30   66 
+77.05221   18.62069 
+30   66 
+82.26499   12.74649 
+30   66 
+77.57349   18.03325 
+30   66 
+77.57356   18.03325 
+30   66 
+77.57349   18.03327 
+30   66 
+86.27034   8.833976 
+30   66 
+78.44317   17.11332 
+30   66 
+78.44325   17.11332 
+30   66 
+78.44317   17.11334 
+30   66 
+80.27565   15.35813 
+30   66 
+79.29135   16.30092 
+30   66 
+79.29142   16.30092 
+30   66 
+79.29135   16.30094 
+30   66 
+79.91142   15.8602 
+30   66 
+79.9115   15.8602 
+30   66 
+79.91142   15.86021 
+30   66 
+83.65903   13.70544 
+30   66 
+83.65912   13.70544 
+30   66 
+83.65903   13.70546 
+30   66 
+85.29762   13.4841 
+30   66 
+85.29771   13.4841 
+30   66 
+85.29762   13.48411 
+30   66 
+91.74709   11.05028 
+30   66 
+91.74718   11.05028 
+30   66 
+91.74709   11.05029 
+30   66 
+90.9642   11.88903 
+30   66 
+90.96429   11.88903 
+30   66 
+90.9642   11.88904 
+30   66 
+94.35756   11.0336 
+30   66 
+94.35766   11.0336 
+30   66 
+94.35756   11.03361 
+30   66 
+117.6539   5.627838 
+30   66 
+96.6872   10.49302 
+30   66 
+96.6873   10.49302 
+30   66 
+96.6872   10.49303 
+30   66 
+104.485   8.983585 
+30   66 
+100.5007   9.754834 
+30   66 
+100.5008   9.754834 
+30   66 
+100.5007   9.754843 
+30   66 
+103.952   9.324706 
+30   66 
+103.9521   9.324706 
+30   66 
+103.952   9.324715 
+30   66 
+110.231   8.873002 
+30   66 
+110.2311   8.873002 
+30   66 
+110.231   8.87301 
+30   66 
+124.8565   7.256336 
+30   66 
+114.1514   8.439652 
+30   66 
+114.1515   8.439652 
+30   66 
+114.1514   8.43966 
+30   66 
+125.3429   7.476565 
+30   66 
+125.343   7.476565 
+30   66 
+125.3429   7.476572 
+30   66 
+123.0964   7.860446 
+30   66 
+123.0965   7.860446 
+30   66 
+123.0964   7.860454 
+30   66 
+127.895   7.625212 
+30   66 
+127.8951   7.625212 
+30   66 
+127.895   7.625219 
+30   66 
+149.3905   6.479032 
+30   66 
+136.9146   7.144268 
+30   66 
+136.9148   7.144268 
+30   66 
+136.9146   7.144275 
+30   66 
+148.4164   6.67967 
+30   66 
+148.4165   6.67967 
+30   66 
+148.4164   6.679676 
+30   66 
+154.5469   6.617245 
+30   66 
+154.5471   6.617245 
+30   66 
+154.5469   6.617251 
+30   66 
+170.9173   6.204701 
+30   66 
+170.9175   6.204701 
+30   66 
+170.9173   6.204708 
+30   66 
+183.757   6.019271 
+30   66 
+183.7571   6.019271 
+30   66 
+183.757   6.019277 
+30   66 
+200.5543   5.799026 
+30   66 
+200.5545   5.799026 
+30   66 
+200.5543   5.799032 
+30   66 
+221.8109   5.639097 
+30   66 
+221.8111   5.639097 
+30   66 
+221.8109   5.639102 
+30   66 
+333.3177   4.331331 
+30   66 
+232.9616   5.50832 
+30   66 
+232.9618   5.50832 
+30   66 
+232.9616   5.508326 
+30   66 
+269.675   5.170028 
+30   66 
+269.6753   5.170028 
+30   66 
+269.675   5.170033 
+30   66 
+256.5486   5.334454 
+30   66 
+256.5489   5.334454 
+30   66 
+256.5486   5.334459 
+30   66 
+267.1699   5.279974 
+30   66 
+267.1701   5.279974 
+30   66 
+267.1699   5.279979 
+30   66 
+320.4163   4.990036 
+30   66 
+320.4166   4.990036 
+30   66 
+320.4163   4.990041 
+30   66 
+322.0913   5.038521 
+30   66 
+322.0917   5.038521 
+30   66 
+322.0913   5.038526 
+30   66 
+355.7752   4.940658 
+30   66 
+355.7756   4.940658 
+30   66 
+355.7752   4.940663 
+30   66 
+428.1297   4.730574 
+30   66 
+428.1301   4.730574 
+30   66 
+428.1297   4.730578 
+30   66 
+430.2048   4.777067 
+30   66 
+430.2052   4.777067 
+30   66 
+430.2048   4.777071 
+30   66 
+476.7761   4.709416 
+30   66 
+476.7766   4.709416 
+30   66 
+476.7761   4.709421 
+30   66 
+587.8518   4.545693 
+30   66 
+587.8524   4.545693 
+30   66 
+587.8518   4.545698 
+30   66 
+588.9934   4.58432 
+30   66 
+588.994   4.58432 
+30   66 
+588.9934   4.584324 
+30   66 
+656.11   4.538647 
+30   66 
+656.1107   4.538647 
+30   66 
+656.11   4.538651 
+30   66 
+820.106   4.420005 
+30   66 
+820.1068   4.420005 
+30   66 
+820.106   4.420009 
+30   66 
+838.0535   4.438818 
+30   66 
+838.0543   4.438818 
+30   66 
+838.0535   4.438823 
+30   66 
+965.603   4.399933 
+30   66 
+965.604   4.399933 
+30   66 
+965.603   4.399937 
+30   66 
+1182.48   4.333327 
+30   66 
+1182.481   4.333327 
+30   66 
+1182.48   4.333332 
+30   66 
+1314.324   4.321516 
+30   66 
+1314.326   4.321516 
+30   66 
+1314.324   4.32152 
+30   66 
+1569.408   4.28783 
+30   66 
+1569.41   4.28783 
+30   66 
+1569.408   4.287834 
+30   66 
+1850.298   4.275309 
+30   66 
+1850.3   4.275309 
+30   66 
+1850.298   4.275314 
+30   66 
+2441.698   4.21648 
+30   66 
+2441.7   4.21648 
+30   66 
+2441.698   4.216484 
+30   66 
+2441.516   4.236132 
+30   66 
+2441.518   4.236132 
+30   66 
+2441.516   4.236136 
+30   66 
+2774.307   4.228466 
+30   66 
+2774.31   4.228466 
+30   66 
+2774.307   4.22847 
+30   66 
+3610.145   4.200017 
+30   66 
+3610.149   4.200017 
+30   66 
+3610.145   4.200021 
+30   66 
+4229.244   4.190526 
+30   66 
+4229.248   4.190526 
+30   66 
+4229.244   4.19053 
+30   66 
+5138.259   4.185886 
+30   66 
+5138.264   4.185886 
+30   66 
+5138.259   4.185891 
+30   66 
+6476.271   4.172597 
+30   66 
+6476.278   4.172597 
+30   66 
+6476.271   4.172601 
+30   66 
+8060.398   4.168642 
+30   66 
+8060.406   4.168642 
+30   66 
+8060.398   4.168646 
+30   66 
+10128.65   4.161515 
+30   66 
+10128.66   4.161515 
+30   66 
+10128.65   4.161519 
+30   66 
+12872.3   4.159025 
+30   66 
+12872.31   4.159025 
+30   66 
+12872.3   4.159029 
+30   66 
+16647.84   4.152425 
+30   66 
+16647.86   4.152425 
+30   66 
+16647.84   4.152429 
+30   66 
+21400.26   4.151822 
+30   66 
+21400.28   4.151822 
+30   66 
+21400.26   4.151826 
+30   66 
+27653.23   4.148149 
+30   66 
+27653.26   4.148149 
+30   66 
+27653.23   4.148154 
+30   66 
+35876.52   4.147247 
+30   66 
+35876.56   4.147247 
+30   66 
+35876.52   4.147251 
+30   66 
+46495.17   4.145567 
+30   66 
+46495.22   4.145567 
+30   66 
+46495.17   4.145571 
+30   66 
+60765.09   4.144887 
+30   66 
+60765.15   4.144887 
+30   66 
+60765.09   4.144891 
+30   66 
+79409.56   4.143846 
+30   66 
+79409.64   4.143846 
+30   66 
+79409.56   4.14385 
+30   66 
+104371.3   4.143513 
+30   66 
+104371.4   4.143513 
+30   66 
+104371.3   4.143518 
+30   66 
+137330.2   4.142789 
+30   66 
+137330.3   4.142789 
+30   66 
+137330.2   4.142793 
+30   66 
+178165   4.142727 
+30   66 
+178165.2   4.142727 
+30   66 
+178165   4.142731 
+Fit Mean:  178165  Size:  4.142727  Code:  1 
+> 
+> cat("Final Fit Mean: ", nb_fit_mu, " Size: ", nb_fit_size, " Code: ", nb_fit$code, " Try Size: ", try_size, "\n")
+Final Fit Mean:  178165  Size:  4.142727  Code:  1  Try Size:  10 
+> 
+> ## Fit failed = reset parameters so graphing and output code can recognize this
+> if ((nb_fit_mu < 0) || (nb_fit_size < 0) || (nb_fit$code != 1))
++ {
++   nb_fit_mu = 0
++   nb_fit_size = 0
++ }
+> 
+> 
+> ## things can go wrong with fitting and we can still end up with invalid values
+> 
+> fit_nb = c()
+> included_fract = 0
+> if (nb_fit_mu > 0)
++ {
++   end_fract = pnbinom(end_i_for_fits, mu = nb_fit_mu, size=nb_fit_size)
++   start_fract = pnbinom(start_i_for_fits, mu = nb_fit_mu, size=nb_fit_size)
++   included_fract = end_fract-start_fract;
++ 
++   if (included_fract >= 0.01) {
++ 
++     ## Adjust so that we are back in full coords before making fit!!
++     if (num_per_bin > 1) 
++     {
++       nb_fit_mu = nb_fit_mu * num_per_bin
++     }
++     fit_nb = dnbinom(0:max(X$coverage), mu = nb_fit_mu, size=nb_fit_size)*inner_total/included_fract;
++   }
++ }
+> 
+> ## If an insufficient amount of fit was included, then invalidate it
+> if (included_fract < 0.01)
++ {
++   nb_fit_mu = 0
++   nb_fit_size = 0
++ }
+> 
+> f_p <- function(par) {
++ 
++   lambda = par[1];
++ 
++   if (lambda <= 0)
++   {
++     return(0);
++   }
++   
++ 	total <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{	
++     #cat(i, " ", lambda, "\n");
++ 		dist[i] <- dpois(i, lambda=lambda);
++ 		total <- total + dist[i] 
++ 	}
++ 	#print (total)
++ 
++  	l <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{
++ 		l <- l + ((X.for.fits[i]/inner_total)-(dist[i]/total))^2;
++ 	}
++ 	return(l);
++ }
+> 
+> 
+> ## Fit Poisson 
+> ## - allow fit to fail and set all params to zero/empty if that is the case
+> 
+> p_fit = NULL
+> try(suppressWarnings(p_fit<-nlm(f_p, c(m), print.level=this.print.level)))
+> 
+> fit_p = c()
+> if (!is.null(p_fit) && (p_fit$estimate[1] > 0))
++ {
++   #print (nb_fit$estimate[1])
++   p_fit_lambda = p_fit$estimate[1];
++   #print(0:max(X$coverage))
++ 
++   end_fract = ppois(end_i_for_fits, lambda = p_fit_lambda)
++   start_fract = ppois(start_i_for_fits, lambda = p_fit_lambda)
++   included_fract = end_fract-start_fract;
++ 
++   ## Adjust so that we are back in full coords before making fit!!
++   if (num_per_bin > 1) 
++   {
++     p_fit_lambda = p_fit_lambda * num_per_bin
++   }
++   fit_p<-dpois(0:max(X$coverage), lambda = p_fit_lambda)*inner_total/included_fract;
++ }
+> 
+> 
+> ## Graphing
+> ##
+> ## don't graph very high values with very little coverage
+> i<-max_i
+> while (i <= length(X$n) && X$n[i]>0.01*max_n)
++ {		
++ 	i <- i+1;
++ }
+> graph_end_i <-i
+> 
+> ## Ths leaves enough room to the right of the peak for the legend
+> graph_end_i = max(floor(2.2 * max_i), graph_end_i);
+> 
+> ## graphics settings
+> my_pch = 21
+> my_col = "black";
+> my_col_censored = "red";
+> 
+> if (pdf_output == 0) {
++   
++   ## bitmap() requires ghostscript to be installed.
++   ## taa=4, gaa=2 options NOT compatible with earlier R versions!
++   ## units = "px" NOT compatible with even earlier R versions!
++   
++   if(!capabilities(what = "png"))
++   {
++     ## fallback to ghostscript
++     bitmap(plot_file, height=6, width=7, type = "png16m", res = 72, pointsize=18)
++   } else {
++     ## use X11 function, which gives better resolution
++     png(plot_file, height=6, width=7, units ="in", res = 72, pointsize=18)
++     par(family="sans")
++   }
++ } else {
++   pdf(plot_file, height=6, width=7)
++   par(family="sans")
++ }
+> 
+> par(mar=c(5.5,7.5,3,1.5));
+> 
+> max_y = 0
+> if (plot_poisson) {
++ 	max_y = max(X$n, fit_p, fit_nb)
++ } else {
++ 	max_y = max(X$n, fit_nb)
++ }
+> 
+> plot(0:10, 0:10, type="n", lty="solid", ylim=c(0, max_y)*1.05, xlim=c(0, graph_end_i), lwd=1, xaxs="i", yaxs="i", axes=F, las=1, main="Coverage Distribution at Unique-Only Positions", xlab="Coverage depth (reads)", ylab="", cex.lab=1.2, cex.axis=1.2)
+> 
+> mtext(side = 2, text = "Number of reference positions", line = 5.5, cex=1.2)
+> 
+> sciNotation <- function(x, digits = 1) {
++     if (length(x) > 1) {
++         return(append(sciNotation(x[1]), sciNotation(x[-1])))     
++ 	} 
++     if (!x) return(0) 
++ 
++ 	exponent <- floor(log10(x)) 
++     base <- round(x / 10^exponent, digits)     
++ 	as.expression(substitute(base %*% 10^exponent, list(base = base, exponent = exponent))) 
++ }
+> 
+> #axis(2, cex.lab=1.2, las=1, cex.axis=1.2, labels=T, at=(0:6)*50000)
+> axis(2, cex.lab=1.2, las=1, cex.axis=1.2, at = axTicks(2), labels = sciNotation(axTicks(2), 1))
+> axis(1, cex.lab=1.2, cex.axis=1.2, labels=T)
+> box()
+> 
+> #graph the coverage as points
+> fit_data <- subset(X, (coverage>=start_i) & (coverage<=end_i) );
+> points(fit_data$coverage, fit_data$n, pch=my_pch, col=my_col, bg="white", cex=1.2)
+> 
+> #graph the censored coverage as red points
+> cat(start_i, " ", end_i, "\n", sep="")
+30 66
+> 
+> censored_data <- subset(X, (coverage<start_i) | (coverage>end_i) );
+> points(censored_data$coverage, censored_data$n, pch=my_pch, col=my_col_censored, bg="white", cex=1.2)
+> 
+> #graph the poisson fit IF REQUESTED
+> if (plot_poisson) {
++ 	lines(0:max(X$coverage), fit_p, lwd=3, lty="22", col="black");
++ }
+> 
+> #graph the negative binomial fit
+> if (nb_fit_mu > 0) {
++   lines(0:max(X$coverage), fit_nb, lwd=3, col="black");
++ }
+> 
+> if (plot_poisson) {
++ 	legend("topright", c("Coverage distribution", "Censored data", "Negative binomial", "Poisson"), lty=c("blank","blank","solid","22"), lwd=c(1,1,2,2), pch=c(my_pch, my_pch, -1, -1), col=c("black", "red", "black", "black"), bty="n")
++ } else {
++ 	legend("topright", c("Coverage distribution", "Censored data", "Negative binomial"), lty=c("blank","blank","solid"), lwd=c(1,1,2), pch=c(my_pch, my_pch, -1), col=c("black", "red", "black"), bty="n")
++ }
+> 
+> dev.off()
+null device 
+          1 
+> 
+> ## Fit the marginal value that we use for propagating deletions
+> 
+> if (nb_fit_mu > 0) {
++   cat(nb_fit_size, " ", nb_fit_mu, "\n")
++   deletion_propagation_coverage = suppressWarnings(qnbinom(deletion_propagation_pr_cutoff, size = nb_fit_size, mu = nb_fit_mu))
++ } else {
++   cat("Fallback to calculating off an estimate of just variance = mu + mu^2/size\n")
++   size_estimate = (1/(v-m))*(m*m)
++   cat("Mu estimate=", m," Size estimate =", size_estimate, "\n")
++   deletion_propagation_coverage = suppressWarnings(qnbinom(deletion_propagation_pr_cutoff, size = size_estimate, mu = m))
++   if (is.na(deletion_propagation_coverage) || is.nan(deletion_propagation_coverage) || (deletion_propagation_coverage < 1)) {
++     cat("Double fallback to calculating as just 10% of the mean\n")
++     deletion_propagation_coverage = m * 0.1
++   }
++ }
+Fallback to calculating off an estimate of just variance = mu + mu^2/size
+Mu estimate= 39.5914  Size estimate = 4.604044 
+> 
+> #Don't allow one read to indicate non-deleted regions
+> if (deletion_propagation_coverage < 1) {
++     deletion_propagation_coverage = 1
++ }
+> 
+> #This works fine with the negative values
+> #If we have both low fit coverage and low straight average coverage then we're deleted...
+> if ( (nb_fit_mu <= 3) && (m <= 3) ) {
++   deletion_propagation_coverage = -1
++ }
+> 
+> #print out statistics
+> 
+> print(nb_fit_size);
+[1] 0
+> print(nb_fit_mu);
+[1] 0
+> 
+> print(m)
+[1] 39.5914
+> print(v)
+[1] 380.0484
+> print(D)
+[1] 9.599266
+> 
+> print(deletion_propagation_coverage)
+[1] 5
+> 
+> warnings()
+> 

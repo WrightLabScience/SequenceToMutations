@@ -1,0 +1,948 @@
+
+R version 4.3.1 (2023-06-16) -- "Beagle Scouts"
+Copyright (C) 2023 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> ##
+> ##
+> ## AUTHORS
+> ##
+> ## Jeffrey E. Barrick <jeffrey.e.barrick@gmail.com>
+> ##
+> ## LICENSE AND COPYRIGHT
+> ##
+> ## Copyright (c) 2008-2010 Michigan State University
+> ## Copyright (c) 2011-2022 The University of Texas at Austin
+> ##
+> ## breseq is free software; you can redistribute it and/or modify it under the
+> ## terms the GNU General Public License as published by the Free Software
+> ## Foundation; either version 1, or (at your option) any later version.
+> ##
+> ##
+> 
+> ## Arguments:
+> ##   distribution_file=/path/to/input 
+> ##   plot_file=/path/to/output 
+> ##   deletion_propagation_pr_cutoff=float
+> ##   plot_poisson=0 or 1
+> ##   pdf_output=0 or 1
+> 
+> ## Returns these values printed out to output log
+> ## 
+> ##  1. print(nb_fit_size); # 0 if fit failed
+> ##  2. print(nb_fit_mu);   # 0 if fit failed
+> ##  3. print(m)q
+> ##  4. print(v)
+> ##  5. print(D)
+> ##  6. print(deletion_propagation_coverage)
+> ##     -1 if it was <1 after fitting (implying reference sequence is deleted)
+> ##
+> 
+> plot_poisson = 0;
+> pdf_output = 1;
+> 
+> this.print.level = 0
+> #this.print.level = 2
+> 
+> for (e in commandArgs(TRUE)) {
++   ta = strsplit(e,"=",fixed=TRUE)[[1]]
++   if(length(ta)>1) {
++     temp = ta[2]
++     assign(ta[1],temp)
++     cat("assigned ",ta[1]," the value of |",temp,"|\n")
++   } else {
++     assign(ta[[1]][1],TRUE)
++     cat("assigned ",ta[1]," the value of TRUE\n")
++   }
++ }
+assigned  distribution_file  the value of | 4a+_BHI_c50_out/07_error_calibration/66.unique_only_coverage_distribution.tab |
+assigned  plot_file  the value of | 4a+_BHI_c50_out/output/calibration/66.unique_coverage.pdf |
+assigned  deletion_propagation_pr_cutoff  the value of | 0.00250627 |
+> 
+> deletion_propagation_pr_cutoff = as.numeric(deletion_propagation_pr_cutoff);
+> 
+> ## initialize values to be filled in
+> nb_fit_mu = 0
+> nb_fit_size = 0
+> m = 0
+> v = 0
+> D = 0
+> deletion_propagation_coverage = -1
+> 
+> min_fraction_included_in_nb_fit = 0.01
+> 
+> #load data
+> X<-read.table(distribution_file, header=T)
+> 
+> #table might be empty
+> if (nrow(X) == 0)
++ {
++   #print out statistics
++   
++   print(nb_fit_size);
++   print(nb_fit_mu);
++   
++   print(m)
++   print(v)
++   print(D)
++   
++   print(deletion_propagation_coverage)
++   
++   q()
++ }
+> 
+> #create the distribution vector and fit
+> Y<-rep(X$coverage, X$n)
+> m<-mean(Y)
+> v<-var(Y)
+> D<-v/m
+> 
+> ###
+> ## Smooth the distribution with a moving average window of size 5
+> ## so that we can more reliably find it's maximum value
+> ###
+> 
+> ma5 = c(1, 1, 1, 1, 1)/5;
+> 
+> ## filtering fails if there are too few points
+> if (nrow(X) >= 5) {
++   X$ma = filter(X$n, ma5)
++ } else {
++ 	X$ma = X$n
++ }
+> 
+> i<-0
+> max_n <- 0;
+> min_i <- max( trunc(m/4), 1 ); #prevents zero for pathological distributions
+> max_i <- i;
+> for (i in min_i:length(X$ma))
++ {		
++   #cat(i, "\n")
++ 	if (!is.na(X$ma[i]) && (X$ma[i] > max_n))
++ 	{
++ 		max_n = X$ma[i];
++ 		max_i = i;
++ 	}
++ }
+> 
+> ##
+> # Censor data on the right and left of the maximum
+> ##
+> 
+> start_i = max(floor(max_i*0.5), 1);
+> end_i = min(ceiling(max_i*1.5), length(X$ma));
+> 
+> if (start_i == end_i)
++ {
++   print(nb_fit_size);
++   print(nb_fit_mu);
++   
++   print(m)
++   print(v)
++   print(D)
++   
++   print(deletion_propagation_coverage)
++   
++   q()
++ }
+> 
+> cat("Fitting from coverage of ", start_i, " to ", end_i, ".\n", sep="")
+Fitting from coverage of 6 to 14.
+> 
+> ##
+> # Coarse grain so that we are only fitting a number of bins that is 1000-2000
+> #
+> # The later adjustment for doing the fits this way is to multiply the means
+> # of the negative binomial and poisson distributions by the binning number.
+> # (The size parameter of the negative binomial doesn't need to be adjusted.)
+> ##
+> 
+> 
+> num_per_bin = trunc((end_i - start_i) / 1000)
+> 
+> if (num_per_bin > 1) 
++ {
++   cat("Coarse-graining for fits\n")
++   start_i_for_fits = trunc(start_i/num_per_bin)
++   end_i_for_fits = ceiling(end_i/num_per_bin)
++   num_bins = end_i - start_i  + 1
++   cat("Fitting from coverage in adjusted bins ", start_i_for_fits, " to ", end_i_for_fits, ".\n", sep="")
++   cat("Number of bins ", num_bins, ". Each bin has ", num_per_bin, " coverage values.\n", sep="")
++ 
++   # Create a new vector where we've added together values in bins
++   X.for.fits = vector("double", end_i_for_fits)
++   for (i in start_i_for_fits:end_i_for_fits)
++   {
++     for (j in 1:num_per_bin)
++     {
++       if (i*num_per_bin+j <= length(X$n))
++       {
++         X.for.fits[i] = X.for.fits[i] + X$n[i*num_per_bin+j]
++       }
++     }
++   }
++ 
++ } else {
++   ## AVOID num_per_bin equalling zero!!
++   X.for.fits = X$n[1:end_i]
++   num_per_bin = 1
++   start_i_for_fits = start_i
++   end_i_for_fits = end_i
++ }
+> 
+> 
+> ##
+> # Now perform negative binomial fitting to the censored data
+> ##
+> 
+> inner_total<-0;
+> for (i in start_i_for_fits:end_i_for_fits)
++ {
++ 	inner_total = inner_total + X.for.fits[i]; 
++ }
+> # Yes: it's correct to use X here because we want the overall total total
+> total_total<-sum(X$n);
+> 
+> ## let's preconstruct these for speed
+> dist = vector("double", end_i_for_fits)
+> 
+> f_nb <- function(par) {
++ 
++ 	mu = par[1];
++ 	size = par[2];
++ 
++   if ((mu <= 0) || (size <= 0))
++   {
++     return(0);
++   }
++   
++   cat(start_i_for_fits, " ", end_i_for_fits, "\n");
++   cat(mu, " ", size, "\n");
++   
++ 	dist<-c()
++ 	total <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{	
++ 		dist[i] <- dnbinom(i, size=size, mu=mu);
++ 		total <- total + dist[i] 
++ 	}
++ 	#print (mu, size)
++ 
++  	l <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{
++ 		l <- l + ((X.for.fits[i]/inner_total)-(dist[i]/total))^2;
++ 	}
++ 	return(l);
++ }
+> 
+> 
+> 
+> ## Fit negative binomial 
+> ## - allow fit to fail and set all params to zero/empty if that is the case
+> nb_fit = NULL
+> ## as.numeric prevents overflow in sums involving integers
+> mean_estimate = sum((as.numeric(1:end_i_for_fits)*as.numeric(X.for.fits)))/sum(as.numeric(X.for.fits))
+> 
+> nb_fit_mu = -1
+> nb_fit_size = -1
+> try_size = 100000
+> try_means_index = 1
+> #This is a list of different means to test <-  sometimes the actual mean doesn't lead to a fit
+> try_means = c(mean_estimate, 
++               end_i_for_fits, 
++               start_i_for_fits, 
++               1*(end_i_for_fits + start_i_for_fits)/4,
++               2*(end_i_for_fits + start_i_for_fits)/4,
++               3*(end_i_for_fits + start_i_for_fits)/4
++               )
+>               
+>               
+> nb_fit = c()
+> 
+> while ( ((nb_fit_mu < 0) || (nb_fit_size < 0) || (nb_fit$code != 1)) && (try_size > 0.001) && (try_means_index <= length(try_means)))
++ {
++   try_size = try_size / 10
++   try_mean = try_means[try_means_index]
++ 
++   ## SIZE ESTIMATE from the censored data can be negative, so try various values instead
++   cat("Try Mean: ", try_mean, " Size: ", try_size, "\n")
++ 
++   try( suppressWarnings(nb_fit<-nlm(f_nb, c(try_mean, try_size), iterlim=1000, print.level=this.print.level)) )
++ 
++   nb_fit_mu = nb_fit$estimate[1];
++   nb_fit_size = nb_fit$estimate[2];
++ 
++   cat("Fit Mean: ", nb_fit_mu, " Size: ", nb_fit_size, " Code: ", nb_fit$code, "\n")
++   
++   if (try_size <= 0.001) {
++     try_size = 100000
++     try_means_index = try_means_index + 1
++   }
++ }
+Try Mean:  11.65625  Size:  10000 
+6   14 
+11.65625   10000 
+6   14 
+11.65625   10000 
+6   14 
+11.65626   10000 
+6   14 
+11.65625   10000.01 
+6   14 
+11.68258   10000 
+6   14 
+11.68259   10000 
+6   14 
+11.68258   10000.01 
+6   14 
+14.38577   10000 
+6   14 
+14.38578   10000 
+6   14 
+14.38577   10000.01 
+6   14 
+14.94157   10000 
+6   14 
+14.94159   10000 
+6   14 
+14.94157   10000.01 
+6   14 
+15.15839   10000 
+6   14 
+15.15841   10000 
+6   14 
+15.15839   10000.01 
+6   14 
+15.17979   10000 
+6   14 
+15.1798   10000 
+6   14 
+15.17979   10000.01 
+6   14 
+15.18044   10000 
+6   14 
+15.18045   10000 
+6   14 
+15.18044   10000.01 
+6   14 
+15.18044   10000 
+6   14 
+15.18046   10000 
+6   14 
+15.18044   10000.01 
+Fit Mean:  15.18044  Size:  10000  Code:  2 
+Try Mean:  11.65625  Size:  1000 
+6   14 
+11.65625   1000 
+6   14 
+11.65625   1000 
+6   14 
+11.65626   1000 
+6   14 
+11.65625   1000.001 
+6   14 
+11.68245   1000 
+6   14 
+11.68246   1000 
+6   14 
+11.68245   1000.001 
+6   14 
+14.40762   1000 
+6   14 
+14.40764   1000 
+6   14 
+14.40762   1000.001 
+6   14 
+14.98217   1000 
+6   14 
+14.98218   1000 
+6   14 
+14.98217   1000.001 
+6   14 
+15.21191   1000 
+6   14 
+15.21192   1000 
+6   14 
+15.21191   1000.001 
+6   14 
+15.23568   1000 
+6   14 
+15.2357   1000 
+6   14 
+15.23568   1000.001 
+6   14 
+15.23645   1000 
+6   14 
+15.23647   1000 
+6   14 
+15.23645   1000.001 
+6   14 
+15.23646   1000 
+6   14 
+15.23647   1000 
+6   14 
+15.23646   1000.001 
+Fit Mean:  15.23646  Size:  1000  Code:  2 
+Try Mean:  11.65625  Size:  100 
+6   14 
+11.65625   100 
+6   14 
+11.65625   100 
+6   14 
+11.65626   100 
+6   14 
+11.65625   100.0001 
+6   14 
+11.68123   100 
+6   14 
+11.68124   100 
+6   14 
+11.68123   100.0001 
+6   14 
+14.61578   100.0153 
+6   14 
+14.61579   100.0153 
+6   14 
+14.61578   100.0154 
+6   14 
+15.38109   100.0235 
+6   14 
+15.3811   100.0235 
+6   14 
+15.38109   100.0236 
+6   14 
+15.76137   100.0295 
+6   14 
+15.76139   100.0295 
+6   14 
+15.76137   100.0296 
+6   14 
+15.82079   100.0319 
+6   14 
+15.8208   100.0319 
+6   14 
+15.82079   100.032 
+6   14 
+15.82439   100.0336 
+6   14 
+15.82441   100.0336 
+6   14 
+15.82439   100.0337 
+6   14 
+15.82588   100.0364 
+6   14 
+15.8259   100.0364 
+6   14 
+15.82588   100.0365 
+6   14 
+15.83074   100.0549 
+6   14 
+15.83076   100.0549 
+6   14 
+15.83074   100.055 
+6   14 
+15.83692   100.1001 
+6   14 
+15.83694   100.1001 
+6   14 
+15.83692   100.1002 
+6   14 
+15.84742   100.238 
+6   14 
+15.84743   100.238 
+6   14 
+15.84742   100.2381 
+6   14 
+15.86268   100.6011 
+6   14 
+15.86269   100.6011 
+6   14 
+15.86268   100.6012 
+6   14 
+15.88442   101.575 
+6   14 
+15.88444   101.575 
+6   14 
+15.88442   101.5751 
+6   14 
+15.91064   104.0841 
+6   14 
+15.91066   104.0841 
+6   14 
+15.91064   104.0842 
+6   14 
+15.93077   110.4562 
+6   14 
+15.93079   110.4562 
+6   14 
+15.93077   110.4563 
+6   14 
+15.91088   126.9141 
+6   14 
+15.91089   126.9141 
+6   14 
+15.91088   126.9143 
+6   14 
+15.74492   175.9403 
+6   14 
+15.74494   175.9403 
+6   14 
+15.74492   175.9405 
+6   14 
+15.22063   312.142 
+6   14 
+15.22065   312.142 
+6   14 
+15.22063   312.1423 
+6   14 
+15.29331   304.5047 
+6   14 
+15.29332   304.5047 
+6   14 
+15.29331   304.5051 
+6   14 
+15.33634   321.162 
+6   14 
+15.33635   321.162 
+6   14 
+15.33634   321.1623 
+6   14 
+15.365   394.5204 
+6   14 
+15.36501   394.5204 
+6   14 
+15.365   394.5208 
+6   14 
+15.3249   510.3241 
+6   14 
+15.32491   510.3241 
+6   14 
+15.3249   510.3246 
+6   14 
+15.24314   702.0714 
+6   14 
+15.24315   702.0714 
+6   14 
+15.24314   702.0721 
+6   14 
+15.20229   896.4352 
+6   14 
+15.2023   896.4352 
+6   14 
+15.20229   896.4361 
+6   14 
+15.19006   1158.251 
+6   14 
+15.19007   1158.251 
+6   14 
+15.19006   1158.252 
+6   14 
+15.1961   1516.494 
+6   14 
+15.19611   1516.494 
+6   14 
+15.1961   1516.495 
+6   14 
+15.20029   1983.45 
+6   14 
+15.2003   1983.45 
+6   14 
+15.20029   1983.452 
+6   14 
+15.19638   2614.58 
+6   14 
+15.19639   2614.58 
+6   14 
+15.19638   2614.583 
+6   14 
+15.18873   3465.296 
+6   14 
+15.18875   3465.296 
+6   14 
+15.18873   3465.3 
+6   14 
+15.18285   4583.492 
+6   14 
+15.18287   4583.492 
+6   14 
+15.18285   4583.497 
+6   14 
+15.18009   6058.59 
+6   14 
+15.18011   6058.59 
+6   14 
+15.18009   6058.596 
+6   14 
+15.17913   8012.179 
+6   14 
+15.17914   8012.179 
+6   14 
+15.17913   8012.187 
+6   14 
+15.17846   10600.06 
+6   14 
+15.17847   10600.06 
+6   14 
+15.17846   10600.07 
+6   14 
+15.17759   14032.04 
+6   14 
+15.1776   14032.04 
+6   14 
+15.17759   14032.05 
+6   14 
+15.17668   18580.21 
+6   14 
+15.17669   18580.21 
+6   14 
+15.17668   18580.23 
+6   14 
+15.17598   24603.99 
+6   14 
+15.17599   24603.99 
+6   14 
+15.17598   24604.01 
+6   14 
+15.17552   32589.54 
+6   14 
+15.17553   32589.54 
+6   14 
+15.17552   32589.57 
+6   14 
+15.17523   43130.93 
+6   14 
+15.17524   43130.93 
+6   14 
+15.17523   43130.98 
+6   14 
+15.17501   57082 
+6   14 
+15.17502   57082 
+6   14 
+15.17501   57082.06 
+6   14 
+15.17482   75948.67 
+6   14 
+15.17484   75948.67 
+6   14 
+15.17482   75948.75 
+6   14 
+15.17468   100348.4 
+6   14 
+15.17469   100348.4 
+6   14 
+15.17468   100348.5 
+6   14 
+15.17458   132374.8 
+6   14 
+15.17459   132374.8 
+6   14 
+15.17458   132374.9 
+6   14 
+15.1745   174468 
+6   14 
+15.17451   174468 
+6   14 
+15.1745   174468.2 
+6   14 
+15.17443   231649.9 
+6   14 
+15.17445   231649.9 
+6   14 
+15.17443   231650.1 
+6   14 
+15.17441   291679 
+6   14 
+15.17442   291679 
+6   14 
+15.17441   291679.3 
+6   14 
+15.17435   392356.1 
+6   14 
+15.17436   392356.1 
+6   14 
+15.17435   392356.4 
+6   14 
+15.17434   474022 
+6   14 
+15.17436   474022 
+6   14 
+15.17434   474022.5 
+6   14 
+15.17432   574699 
+6   14 
+15.17434   574699 
+6   14 
+15.17432   574699.6 
+6   14 
+15.17433   675028.1 
+6   14 
+15.17434   675028.1 
+6   14 
+15.17433   675028.8 
+6   14 
+15.17431   775705.2 
+6   14 
+15.17433   775705.2 
+6   14 
+15.17431   775705.9 
+6   14 
+15.17432   837231.2 
+6   14 
+15.17433   837231.2 
+6   14 
+15.17432   837232.1 
+Fit Mean:  15.17432  Size:  837231.2  Code:  1 
+> 
+> cat("Final Fit Mean: ", nb_fit_mu, " Size: ", nb_fit_size, " Code: ", nb_fit$code, " Try Size: ", try_size, "\n")
+Final Fit Mean:  15.17432  Size:  837231.2  Code:  1  Try Size:  100 
+> 
+> ## Fit failed = reset parameters so graphing and output code can recognize this
+> if ((nb_fit_mu < 0) || (nb_fit_size < 0) || (nb_fit$code != 1))
++ {
++   nb_fit_mu = 0
++   nb_fit_size = 0
++ }
+> 
+> 
+> ## things can go wrong with fitting and we can still end up with invalid values
+> 
+> fit_nb = c()
+> included_fract = 0
+> if (nb_fit_mu > 0)
++ {
++   end_fract = pnbinom(end_i_for_fits, mu = nb_fit_mu, size=nb_fit_size)
++   start_fract = pnbinom(start_i_for_fits, mu = nb_fit_mu, size=nb_fit_size)
++   included_fract = end_fract-start_fract;
++ 
++   if (included_fract >= 0.01) {
++ 
++     ## Adjust so that we are back in full coords before making fit!!
++     if (num_per_bin > 1) 
++     {
++       nb_fit_mu = nb_fit_mu * num_per_bin
++     }
++     fit_nb = dnbinom(0:max(X$coverage), mu = nb_fit_mu, size=nb_fit_size)*inner_total/included_fract;
++   }
++ }
+> 
+> ## If an insufficient amount of fit was included, then invalidate it
+> if (included_fract < 0.01)
++ {
++   nb_fit_mu = 0
++   nb_fit_size = 0
++ }
+> 
+> f_p <- function(par) {
++ 
++   lambda = par[1];
++ 
++   if (lambda <= 0)
++   {
++     return(0);
++   }
++   
++ 	total <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{	
++     #cat(i, " ", lambda, "\n");
++ 		dist[i] <- dpois(i, lambda=lambda);
++ 		total <- total + dist[i] 
++ 	}
++ 	#print (total)
++ 
++  	l <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{
++ 		l <- l + ((X.for.fits[i]/inner_total)-(dist[i]/total))^2;
++ 	}
++ 	return(l);
++ }
+> 
+> 
+> ## Fit Poisson 
+> ## - allow fit to fail and set all params to zero/empty if that is the case
+> 
+> p_fit = NULL
+> try(suppressWarnings(p_fit<-nlm(f_p, c(m), print.level=this.print.level)))
+> 
+> fit_p = c()
+> if (!is.null(p_fit) && (p_fit$estimate[1] > 0))
++ {
++   #print (nb_fit$estimate[1])
++   p_fit_lambda = p_fit$estimate[1];
++   #print(0:max(X$coverage))
++ 
++   end_fract = ppois(end_i_for_fits, lambda = p_fit_lambda)
++   start_fract = ppois(start_i_for_fits, lambda = p_fit_lambda)
++   included_fract = end_fract-start_fract;
++ 
++   ## Adjust so that we are back in full coords before making fit!!
++   if (num_per_bin > 1) 
++   {
++     p_fit_lambda = p_fit_lambda * num_per_bin
++   }
++   fit_p<-dpois(0:max(X$coverage), lambda = p_fit_lambda)*inner_total/included_fract;
++ }
+> 
+> 
+> ## Graphing
+> ##
+> ## don't graph very high values with very little coverage
+> i<-max_i
+> while (i <= length(X$n) && X$n[i]>0.01*max_n)
++ {		
++ 	i <- i+1;
++ }
+> graph_end_i <-i
+> 
+> ## Ths leaves enough room to the right of the peak for the legend
+> graph_end_i = max(floor(2.2 * max_i), graph_end_i);
+> 
+> ## graphics settings
+> my_pch = 21
+> my_col = "black";
+> my_col_censored = "red";
+> 
+> if (pdf_output == 0) {
++   
++   ## bitmap() requires ghostscript to be installed.
++   ## taa=4, gaa=2 options NOT compatible with earlier R versions!
++   ## units = "px" NOT compatible with even earlier R versions!
++   
++   if(!capabilities(what = "png"))
++   {
++     ## fallback to ghostscript
++     bitmap(plot_file, height=6, width=7, type = "png16m", res = 72, pointsize=18)
++   } else {
++     ## use X11 function, which gives better resolution
++     png(plot_file, height=6, width=7, units ="in", res = 72, pointsize=18)
++     par(family="sans")
++   }
++ } else {
++   pdf(plot_file, height=6, width=7)
++   par(family="sans")
++ }
+> 
+> par(mar=c(5.5,7.5,3,1.5));
+> 
+> max_y = 0
+> if (plot_poisson) {
++ 	max_y = max(X$n, fit_p, fit_nb)
++ } else {
++ 	max_y = max(X$n, fit_nb)
++ }
+> 
+> plot(0:10, 0:10, type="n", lty="solid", ylim=c(0, max_y)*1.05, xlim=c(0, graph_end_i), lwd=1, xaxs="i", yaxs="i", axes=F, las=1, main="Coverage Distribution at Unique-Only Positions", xlab="Coverage depth (reads)", ylab="", cex.lab=1.2, cex.axis=1.2)
+> 
+> mtext(side = 2, text = "Number of reference positions", line = 5.5, cex=1.2)
+> 
+> sciNotation <- function(x, digits = 1) {
++     if (length(x) > 1) {
++         return(append(sciNotation(x[1]), sciNotation(x[-1])))     
++ 	} 
++     if (!x) return(0) 
++ 
++ 	exponent <- floor(log10(x)) 
++     base <- round(x / 10^exponent, digits)     
++ 	as.expression(substitute(base %*% 10^exponent, list(base = base, exponent = exponent))) 
++ }
+> 
+> #axis(2, cex.lab=1.2, las=1, cex.axis=1.2, labels=T, at=(0:6)*50000)
+> axis(2, cex.lab=1.2, las=1, cex.axis=1.2, at = axTicks(2), labels = sciNotation(axTicks(2), 1))
+> axis(1, cex.lab=1.2, cex.axis=1.2, labels=T)
+> box()
+> 
+> #graph the coverage as points
+> fit_data <- subset(X, (coverage>=start_i) & (coverage<=end_i) );
+> points(fit_data$coverage, fit_data$n, pch=my_pch, col=my_col, bg="white", cex=1.2)
+> 
+> #graph the censored coverage as red points
+> cat(start_i, " ", end_i, "\n", sep="")
+6 14
+> 
+> censored_data <- subset(X, (coverage<start_i) | (coverage>end_i) );
+> points(censored_data$coverage, censored_data$n, pch=my_pch, col=my_col_censored, bg="white", cex=1.2)
+> 
+> #graph the poisson fit IF REQUESTED
+> if (plot_poisson) {
++ 	lines(0:max(X$coverage), fit_p, lwd=3, lty="22", col="black");
++ }
+> 
+> #graph the negative binomial fit
+> if (nb_fit_mu > 0) {
++   lines(0:max(X$coverage), fit_nb, lwd=3, col="black");
++ }
+> 
+> if (plot_poisson) {
++ 	legend("topright", c("Coverage distribution", "Censored data", "Negative binomial", "Poisson"), lty=c("blank","blank","solid","22"), lwd=c(1,1,2,2), pch=c(my_pch, my_pch, -1, -1), col=c("black", "red", "black", "black"), bty="n")
++ } else {
++ 	legend("topright", c("Coverage distribution", "Censored data", "Negative binomial"), lty=c("blank","blank","solid"), lwd=c(1,1,2), pch=c(my_pch, my_pch, -1), col=c("black", "red", "black"), bty="n")
++ }
+> 
+> dev.off()
+null device 
+          1 
+> 
+> ## Fit the marginal value that we use for propagating deletions
+> 
+> if (nb_fit_mu > 0) {
++   cat(nb_fit_size, " ", nb_fit_mu, "\n")
++   deletion_propagation_coverage = suppressWarnings(qnbinom(deletion_propagation_pr_cutoff, size = nb_fit_size, mu = nb_fit_mu))
++ } else {
++   cat("Fallback to calculating off an estimate of just variance = mu + mu^2/size\n")
++   size_estimate = (1/(v-m))*(m*m)
++   cat("Mu estimate=", m," Size estimate =", size_estimate, "\n")
++   deletion_propagation_coverage = suppressWarnings(qnbinom(deletion_propagation_pr_cutoff, size = size_estimate, mu = m))
++   if (is.na(deletion_propagation_coverage) || is.nan(deletion_propagation_coverage) || (deletion_propagation_coverage < 1)) {
++     cat("Double fallback to calculating as just 10% of the mean\n")
++     deletion_propagation_coverage = m * 0.1
++   }
++ }
+837231.2   15.17432 
+> 
+> #Don't allow one read to indicate non-deleted regions
+> if (deletion_propagation_coverage < 1) {
++     deletion_propagation_coverage = 1
++ }
+> 
+> #This works fine with the negative values
+> #If we have both low fit coverage and low straight average coverage then we're deleted...
+> if ( (nb_fit_mu <= 3) && (m <= 3) ) {
++   deletion_propagation_coverage = -1
++ }
+> 
+> #print out statistics
+> 
+> print(nb_fit_size);
+[1] 837231.2
+> print(nb_fit_mu);
+[1] 15.17432
+> 
+> print(m)
+[1] 11.65625
+> print(v)
+[1] 6.697971
+> print(D)
+[1] 0.5746249
+> 
+> print(deletion_propagation_coverage)
+[1] 6
+> 
+> warnings()
+> 

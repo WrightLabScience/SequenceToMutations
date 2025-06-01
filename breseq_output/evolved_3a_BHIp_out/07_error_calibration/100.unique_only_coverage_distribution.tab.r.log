@@ -1,0 +1,1212 @@
+
+R version 4.3.1 (2023-06-16) -- "Beagle Scouts"
+Copyright (C) 2023 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> ##
+> ##
+> ## AUTHORS
+> ##
+> ## Jeffrey E. Barrick <jeffrey.e.barrick@gmail.com>
+> ##
+> ## LICENSE AND COPYRIGHT
+> ##
+> ## Copyright (c) 2008-2010 Michigan State University
+> ## Copyright (c) 2011-2022 The University of Texas at Austin
+> ##
+> ## breseq is free software; you can redistribute it and/or modify it under the
+> ## terms the GNU General Public License as published by the Free Software
+> ## Foundation; either version 1, or (at your option) any later version.
+> ##
+> ##
+> 
+> ## Arguments:
+> ##   distribution_file=/path/to/input 
+> ##   plot_file=/path/to/output 
+> ##   deletion_propagation_pr_cutoff=float
+> ##   plot_poisson=0 or 1
+> ##   pdf_output=0 or 1
+> 
+> ## Returns these values printed out to output log
+> ## 
+> ##  1. print(nb_fit_size); # 0 if fit failed
+> ##  2. print(nb_fit_mu);   # 0 if fit failed
+> ##  3. print(m)q
+> ##  4. print(v)
+> ##  5. print(D)
+> ##  6. print(deletion_propagation_coverage)
+> ##     -1 if it was <1 after fitting (implying reference sequence is deleted)
+> ##
+> 
+> plot_poisson = 0;
+> pdf_output = 1;
+> 
+> this.print.level = 0
+> #this.print.level = 2
+> 
+> for (e in commandArgs(TRUE)) {
++   ta = strsplit(e,"=",fixed=TRUE)[[1]]
++   if(length(ta)>1) {
++     temp = ta[2]
++     assign(ta[1],temp)
++     cat("assigned ",ta[1]," the value of |",temp,"|\n")
++   } else {
++     assign(ta[[1]][1],TRUE)
++     cat("assigned ",ta[1]," the value of TRUE\n")
++   }
++ }
+assigned  distribution_file  the value of | 3a+_BHI_c50_out/07_error_calibration/100.unique_only_coverage_distribution.tab |
+assigned  plot_file  the value of | 3a+_BHI_c50_out/output/calibration/100.unique_coverage.pdf |
+assigned  deletion_propagation_pr_cutoff  the value of | 0.00345857 |
+> 
+> deletion_propagation_pr_cutoff = as.numeric(deletion_propagation_pr_cutoff);
+> 
+> ## initialize values to be filled in
+> nb_fit_mu = 0
+> nb_fit_size = 0
+> m = 0
+> v = 0
+> D = 0
+> deletion_propagation_coverage = -1
+> 
+> min_fraction_included_in_nb_fit = 0.01
+> 
+> #load data
+> X<-read.table(distribution_file, header=T)
+> 
+> #table might be empty
+> if (nrow(X) == 0)
++ {
++   #print out statistics
++   
++   print(nb_fit_size);
++   print(nb_fit_mu);
++   
++   print(m)
++   print(v)
++   print(D)
++   
++   print(deletion_propagation_coverage)
++   
++   q()
++ }
+> 
+> #create the distribution vector and fit
+> Y<-rep(X$coverage, X$n)
+> m<-mean(Y)
+> v<-var(Y)
+> D<-v/m
+> 
+> ###
+> ## Smooth the distribution with a moving average window of size 5
+> ## so that we can more reliably find it's maximum value
+> ###
+> 
+> ma5 = c(1, 1, 1, 1, 1)/5;
+> 
+> ## filtering fails if there are too few points
+> if (nrow(X) >= 5) {
++   X$ma = filter(X$n, ma5)
++ } else {
++ 	X$ma = X$n
++ }
+> 
+> i<-0
+> max_n <- 0;
+> min_i <- max( trunc(m/4), 1 ); #prevents zero for pathological distributions
+> max_i <- i;
+> for (i in min_i:length(X$ma))
++ {		
++   #cat(i, "\n")
++ 	if (!is.na(X$ma[i]) && (X$ma[i] > max_n))
++ 	{
++ 		max_n = X$ma[i];
++ 		max_i = i;
++ 	}
++ }
+> 
+> ##
+> # Censor data on the right and left of the maximum
+> ##
+> 
+> start_i = max(floor(max_i*0.5), 1);
+> end_i = min(ceiling(max_i*1.5), length(X$ma));
+> 
+> if (start_i == end_i)
++ {
++   print(nb_fit_size);
++   print(nb_fit_mu);
++   
++   print(m)
++   print(v)
++   print(D)
++   
++   print(deletion_propagation_coverage)
++   
++   q()
++ }
+> 
+> cat("Fitting from coverage of ", start_i, " to ", end_i, ".\n", sep="")
+Fitting from coverage of 44 to 132.
+> 
+> ##
+> # Coarse grain so that we are only fitting a number of bins that is 1000-2000
+> #
+> # The later adjustment for doing the fits this way is to multiply the means
+> # of the negative binomial and poisson distributions by the binning number.
+> # (The size parameter of the negative binomial doesn't need to be adjusted.)
+> ##
+> 
+> 
+> num_per_bin = trunc((end_i - start_i) / 1000)
+> 
+> if (num_per_bin > 1) 
++ {
++   cat("Coarse-graining for fits\n")
++   start_i_for_fits = trunc(start_i/num_per_bin)
++   end_i_for_fits = ceiling(end_i/num_per_bin)
++   num_bins = end_i - start_i  + 1
++   cat("Fitting from coverage in adjusted bins ", start_i_for_fits, " to ", end_i_for_fits, ".\n", sep="")
++   cat("Number of bins ", num_bins, ". Each bin has ", num_per_bin, " coverage values.\n", sep="")
++ 
++   # Create a new vector where we've added together values in bins
++   X.for.fits = vector("double", end_i_for_fits)
++   for (i in start_i_for_fits:end_i_for_fits)
++   {
++     for (j in 1:num_per_bin)
++     {
++       if (i*num_per_bin+j <= length(X$n))
++       {
++         X.for.fits[i] = X.for.fits[i] + X$n[i*num_per_bin+j]
++       }
++     }
++   }
++ 
++ } else {
++   ## AVOID num_per_bin equalling zero!!
++   X.for.fits = X$n[1:end_i]
++   num_per_bin = 1
++   start_i_for_fits = start_i
++   end_i_for_fits = end_i
++ }
+> 
+> 
+> ##
+> # Now perform negative binomial fitting to the censored data
+> ##
+> 
+> inner_total<-0;
+> for (i in start_i_for_fits:end_i_for_fits)
++ {
++ 	inner_total = inner_total + X.for.fits[i]; 
++ }
+> # Yes: it's correct to use X here because we want the overall total total
+> total_total<-sum(X$n);
+> 
+> ## let's preconstruct these for speed
+> dist = vector("double", end_i_for_fits)
+> 
+> f_nb <- function(par) {
++ 
++ 	mu = par[1];
++ 	size = par[2];
++ 
++   if ((mu <= 0) || (size <= 0))
++   {
++     return(0);
++   }
++   
++   cat(start_i_for_fits, " ", end_i_for_fits, "\n");
++   cat(mu, " ", size, "\n");
++   
++ 	dist<-c()
++ 	total <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{	
++ 		dist[i] <- dnbinom(i, size=size, mu=mu);
++ 		total <- total + dist[i] 
++ 	}
++ 	#print (mu, size)
++ 
++  	l <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{
++ 		l <- l + ((X.for.fits[i]/inner_total)-(dist[i]/total))^2;
++ 	}
++ 	return(l);
++ }
+> 
+> 
+> 
+> ## Fit negative binomial 
+> ## - allow fit to fail and set all params to zero/empty if that is the case
+> nb_fit = NULL
+> ## as.numeric prevents overflow in sums involving integers
+> mean_estimate = sum((as.numeric(1:end_i_for_fits)*as.numeric(X.for.fits)))/sum(as.numeric(X.for.fits))
+> 
+> nb_fit_mu = -1
+> nb_fit_size = -1
+> try_size = 100000
+> try_means_index = 1
+> #This is a list of different means to test <-  sometimes the actual mean doesn't lead to a fit
+> try_means = c(mean_estimate, 
++               end_i_for_fits, 
++               start_i_for_fits, 
++               1*(end_i_for_fits + start_i_for_fits)/4,
++               2*(end_i_for_fits + start_i_for_fits)/4,
++               3*(end_i_for_fits + start_i_for_fits)/4
++               )
+>               
+>               
+> nb_fit = c()
+> 
+> while ( ((nb_fit_mu < 0) || (nb_fit_size < 0) || (nb_fit$code != 1)) && (try_size > 0.001) && (try_means_index <= length(try_means)))
++ {
++   try_size = try_size / 10
++   try_mean = try_means[try_means_index]
++ 
++   ## SIZE ESTIMATE from the censored data can be negative, so try various values instead
++   cat("Try Mean: ", try_mean, " Size: ", try_size, "\n")
++ 
++   try( suppressWarnings(nb_fit<-nlm(f_nb, c(try_mean, try_size), iterlim=1000, print.level=this.print.level)) )
++ 
++   nb_fit_mu = nb_fit$estimate[1];
++   nb_fit_size = nb_fit$estimate[2];
++ 
++   cat("Fit Mean: ", nb_fit_mu, " Size: ", nb_fit_size, " Code: ", nb_fit$code, "\n")
++   
++   if (try_size <= 0.001) {
++     try_size = 100000
++     try_means_index = try_means_index + 1
++   }
++ }
+Try Mean:  84.53846  Size:  10000 
+44   132 
+84.53846   10000 
+44   132 
+84.53846   10000 
+44   132 
+84.53855   10000 
+44   132 
+84.53846   10000.01 
+44   132 
+84.53901   10000 
+44   132 
+84.5391   10000 
+44   132 
+84.53901   10000.01 
+44   132 
+85.71393   10000 
+44   132 
+85.71402   10000 
+44   132 
+85.71393   10000.01 
+44   132 
+85.69794   10000 
+44   132 
+85.69803   10000 
+44   132 
+85.69794   10000.01 
+44   132 
+85.69808   10000 
+44   132 
+85.69817   10000 
+44   132 
+85.69808   10000.01 
+44   132 
+85.69808   10000 
+44   132 
+85.69817   10000 
+44   132 
+85.69808   10000.01 
+Fit Mean:  85.69808  Size:  10000  Code:  2 
+Try Mean:  84.53846  Size:  1000 
+44   132 
+84.53846   1000 
+44   132 
+84.53846   1000 
+44   132 
+84.53855   1000 
+44   132 
+84.53846   1000.001 
+44   132 
+84.53895   1000 
+44   132 
+84.53903   1000 
+44   132 
+84.53895   1000.001 
+44   132 
+85.62621   1000.002 
+44   132 
+85.62629   1000.002 
+44   132 
+85.62621   1000.003 
+44   132 
+85.61796   1000.003 
+44   132 
+85.61805   1000.003 
+44   132 
+85.61796   1000.004 
+44   132 
+85.61785   1000.004 
+44   132 
+85.61793   1000.004 
+44   132 
+85.61785   1000.005 
+44   132 
+85.60718   1000.215 
+44   132 
+85.60727   1000.215 
+44   132 
+85.60718   1000.216 
+44   132 
+85.59644   1000.639 
+44   132 
+85.59652   1000.639 
+44   132 
+85.59644   1000.64 
+44   132 
+85.5752   1002.112 
+44   132 
+85.57528   1002.112 
+44   132 
+85.5752   1002.113 
+44   132 
+85.54378   1005.879 
+44   132 
+85.54386   1005.879 
+44   132 
+85.54378   1005.88 
+44   132 
+85.49337   1016.166 
+44   132 
+85.49346   1016.166 
+44   132 
+85.49337   1016.167 
+44   132 
+85.41981   1042.267 
+44   132 
+85.41989   1042.267 
+44   132 
+85.41981   1042.268 
+44   132 
+85.32405   1105.726 
+44   132 
+85.32414   1105.726 
+44   132 
+85.32405   1105.727 
+44   132 
+85.23372   1247.048 
+44   132 
+85.2338   1247.048 
+44   132 
+85.23372   1247.05 
+44   132 
+85.21758   1537.696 
+44   132 
+85.21767   1537.696 
+44   132 
+85.21758   1537.698 
+44   132 
+85.36864   2069.882 
+44   132 
+85.36872   2069.882 
+44   132 
+85.36864   2069.884 
+44   132 
+85.62568   2790.288 
+44   132 
+85.62577   2790.288 
+44   132 
+85.62568   2790.29 
+44   132 
+85.78435   3452.106 
+44   132 
+85.78444   3452.106 
+44   132 
+85.78435   3452.109 
+44   132 
+85.84987   4135.105 
+44   132 
+85.84996   4135.105 
+44   132 
+85.84987   4135.109 
+44   132 
+85.85711   5280.953 
+44   132 
+85.8572   5280.953 
+44   132 
+85.85711   5280.959 
+44   132 
+85.78994   7041.522 
+44   132 
+85.79003   7041.522 
+44   132 
+85.78994   7041.529 
+44   132 
+85.70193   9271.688 
+44   132 
+85.70202   9271.688 
+44   132 
+85.70193   9271.698 
+44   132 
+85.65037   11740.14 
+44   132 
+85.65046   11740.14 
+44   132 
+85.65037   11740.15 
+44   132 
+85.63454   14982.68 
+44   132 
+85.63463   14982.68 
+44   132 
+85.63454   14982.69 
+44   132 
+85.6527   19833.4 
+44   132 
+85.65279   19833.4 
+44   132 
+85.6527   19833.42 
+44   132 
+85.69104   26445.59 
+44   132 
+85.69112   26445.59 
+44   132 
+85.69104   26445.62 
+44   132 
+85.72217   34412.37 
+44   132 
+85.72226   34412.37 
+44   132 
+85.72217   34412.4 
+44   132 
+85.73636   44299.07 
+44   132 
+85.73644   44299.07 
+44   132 
+85.73636   44299.11 
+44   132 
+85.7342   58150.48 
+44   132 
+85.73429   58150.48 
+44   132 
+85.7342   58150.54 
+44   132 
+85.71983   77380.58 
+44   132 
+85.71992   77380.58 
+44   132 
+85.71983   77380.66 
+44   132 
+85.70437   101892.1 
+44   132 
+85.70445   101892.1 
+44   132 
+85.70437   101892.2 
+44   132 
+85.69551   132496.4 
+44   132 
+85.6956   132496.4 
+44   132 
+85.69551   132496.6 
+44   132 
+85.69448   173721.3 
+44   132 
+85.69456   173721.3 
+44   132 
+85.69448   173721.5 
+44   132 
+85.69991   230710.7 
+44   132 
+85.7   230710.7 
+44   132 
+85.69991   230710.9 
+44   132 
+85.70747   305504.8 
+44   132 
+85.70755   305504.8 
+44   132 
+85.70747   305505.1 
+44   132 
+85.71281   400104 
+44   132 
+85.71289   400104 
+44   132 
+85.71281   400104.4 
+44   132 
+85.71449   524840.1 
+44   132 
+85.71457   524840.1 
+44   132 
+85.71449   524840.6 
+44   132 
+85.71279   694871.2 
+44   132 
+85.71287   694871.2 
+44   132 
+85.71279   694871.9 
+44   132 
+85.70937   923648.5 
+44   132 
+85.70945   923648.5 
+44   132 
+85.70937   923649.5 
+44   132 
+85.70651   1210177 
+44   132 
+85.70659   1210177 
+44   132 
+85.70651   1210178 
+44   132 
+85.70514   1601081 
+44   132 
+85.70522   1601081 
+44   132 
+85.70514   1601083 
+44   132 
+85.70562   2064492 
+44   132 
+85.70571   2064492 
+44   132 
+85.70562   2064494 
+44   132 
+85.7072   2762279 
+44   132 
+85.70728   2762279 
+44   132 
+85.7072   2762282 
+44   132 
+85.70863   3578221 
+44   132 
+85.70871   3578221 
+44   132 
+85.70863   3578225 
+44   132 
+85.70943   4581788 
+44   132 
+85.70952   4581788 
+44   132 
+85.70943   4581793 
+44   132 
+85.70969   5585355 
+44   132 
+85.70977   5585355 
+44   132 
+85.70969   5585361 
+44   132 
+85.70977   6588922 
+44   132 
+85.70986   6588922 
+44   132 
+85.70977   6588929 
+44   132 
+85.70907   7040937 
+44   132 
+85.70915   7040937 
+44   132 
+85.70907   7040944 
+44   132 
+85.70871   7980615 
+44   132 
+85.70879   7980615 
+44   132 
+85.70871   7980623 
+44   132 
+85.70833   8984182 
+44   132 
+85.70841   8984182 
+44   132 
+85.70833   8984191 
+44   132 
+85.70826   8977689 
+44   132 
+85.70832   8983533 
+44   132 
+85.70833   8984117 
+44   132 
+85.70833   8984176 
+44   132 
+85.7169   8984182 
+44   132 
+85.69976   8984182 
+44   132 
+85.70833   8985081 
+44   132 
+85.70833   8983284 
+44   132 
+85.70816   9550807 
+44   132 
+85.71673   9550807 
+44   132 
+85.69959   9550807 
+44   132 
+85.70816   9551762 
+44   132 
+85.70816   9549852 
+44   132 
+85.70808   10052110 
+44   132 
+85.71665   10052110 
+44   132 
+85.69951   10052110 
+44   132 
+85.70808   10053116 
+44   132 
+85.70808   10051105 
+44   132 
+85.70805   10504901 
+44   132 
+85.71662   10504901 
+44   132 
+85.69948   10504901 
+44   132 
+85.70805   10505951 
+44   132 
+85.70805   10503850 
+44   132 
+85.70803   11508468 
+44   132 
+85.7166   11508468 
+44   132 
+85.69946   11508468 
+44   132 
+85.70803   11509619 
+44   132 
+85.70803   11507317 
+44   132 
+85.70803   12512035 
+44   132 
+85.7166   12512035 
+44   132 
+85.69946   12512035 
+44   132 
+85.70803   12513286 
+44   132 
+85.70803   12510784 
+44   132 
+85.70805   13515602 
+44   132 
+85.71662   13515602 
+44   132 
+85.69948   13515602 
+44   132 
+85.70805   13516953 
+44   132 
+85.70805   13514250 
+44   132 
+85.70807   14519169 
+44   132 
+85.71664   14519169 
+44   132 
+85.6995   14519169 
+44   132 
+85.70807   14520621 
+44   132 
+85.70807   14517717 
+44   132 
+85.7081   15522736 
+44   132 
+85.71667   15522736 
+44   132 
+85.69953   15522736 
+44   132 
+85.7081   15524288 
+44   132 
+85.7081   15521184 
+Fit Mean:  85.7081  Size:  15522736  Code:  5 
+Try Mean:  84.53846  Size:  100 
+44   132 
+84.53846   100 
+44   132 
+84.53846   100 
+44   132 
+84.53855   100 
+44   132 
+84.53846   100.0001 
+44   132 
+84.53868   100 
+44   132 
+84.53877   100 
+44   132 
+84.53868   100.0001 
+44   132 
+85.3909   100.3497 
+44   132 
+85.39098   100.3497 
+44   132 
+85.3909   100.3498 
+44   132 
+85.43321   100.5514 
+44   132 
+85.4333   100.5514 
+44   132 
+85.43321   100.5515 
+44   132 
+86.07329   106.7285 
+44   132 
+86.07338   106.7285 
+44   132 
+86.07329   106.7286 
+44   132 
+86.50797   116.9376 
+44   132 
+86.50806   116.9376 
+44   132 
+86.50797   116.9377 
+44   132 
+86.80836   143.2879 
+44   132 
+86.80844   143.2879 
+44   132 
+86.80836   143.2881 
+44   132 
+86.45028   192.7622 
+44   132 
+86.45037   192.7622 
+44   132 
+86.45028   192.7624 
+44   132 
+85.50997   267.4154 
+44   132 
+85.51006   267.4154 
+44   132 
+85.50997   267.4157 
+44   132 
+85.12309   334.003 
+44   132 
+85.12317   334.003 
+44   132 
+85.12309   334.0033 
+44   132 
+85.10284   424.7069 
+44   132 
+85.10293   424.7069 
+44   132 
+85.10284   424.7073 
+44   132 
+85.39167   570.3671 
+44   132 
+85.39176   570.3671 
+44   132 
+85.39167   570.3676 
+44   132 
+85.66956   748.2671 
+44   132 
+85.66964   748.2671 
+44   132 
+85.66956   748.2678 
+44   132 
+85.78128   964.7928 
+44   132 
+85.78136   964.7928 
+44   132 
+85.78128   964.7937 
+44   132 
+85.76036   1268.586 
+44   132 
+85.76044   1268.586 
+44   132 
+85.76036   1268.587 
+44   132 
+85.68475   1674.702 
+44   132 
+85.68484   1674.702 
+44   132 
+85.68475   1674.704 
+44   132 
+85.64101   2198.711 
+44   132 
+85.64109   2198.711 
+44   132 
+85.64101   2198.714 
+44   132 
+85.64539   2899 
+44   132 
+85.64548   2899 
+44   132 
+85.64539   2899.003 
+44   132 
+85.67515   3837.571 
+44   132 
+85.67524   3837.571 
+44   132 
+85.67515   3837.575 
+44   132 
+85.70057   5072.01 
+44   132 
+85.70065   5072.01 
+44   132 
+85.70057   5072.015 
+44   132 
+85.70984   6702.429 
+44   132 
+85.70992   6702.429 
+44   132 
+85.70984   6702.436 
+44   132 
+85.70733   8867.639 
+44   132 
+85.70742   8867.639 
+44   132 
+85.70733   8867.648 
+44   132 
+85.70239   11734.77 
+44   132 
+85.70247   11734.77 
+44   132 
+85.70239   11734.79 
+44   132 
+85.70064   15530.88 
+44   132 
+85.70073   15530.88 
+44   132 
+85.70064   15530.9 
+44   132 
+85.70232   20564.12 
+44   132 
+85.70241   20564.12 
+44   132 
+85.70232   20564.14 
+44   132 
+85.70507   27233.12 
+44   132 
+85.70516   27233.12 
+44   132 
+85.70507   27233.15 
+44   132 
+85.70696   36064.79 
+44   132 
+85.70704   36064.79 
+44   132 
+85.70696   36064.82 
+44   132 
+85.70755   47763.21 
+44   132 
+85.70764   47763.21 
+44   132 
+85.70755   47763.26 
+44   132 
+85.70743   63261.63 
+44   132 
+85.70752   63261.63 
+44   132 
+85.70743   63261.69 
+44   132 
+85.70727   83792.72 
+44   132 
+85.70735   83792.72 
+44   132 
+85.70727   83792.8 
+44   132 
+85.70733   110989.9 
+44   132 
+85.70742   110989.9 
+44   132 
+85.70733   110990 
+44   132 
+85.70758   147001.9 
+44   132 
+85.70766   147001.9 
+44   132 
+85.70758   147002.1 
+44   132 
+85.70783   194767 
+44   132 
+85.70791   194767 
+44   132 
+85.70783   194767.2 
+44   132 
+85.70798   257972 
+44   132 
+85.70806   257972 
+44   132 
+85.70798   257972.2 
+44   132 
+85.70803   341483.4 
+44   132 
+85.70812   341483.4 
+44   132 
+85.70803   341483.8 
+44   132 
+85.70804   453189.5 
+44   132 
+85.70813   453189.5 
+44   132 
+85.70804   453189.9 
+44   132 
+85.70806   584135.1 
+44   132 
+85.70814   584135.1 
+44   132 
+85.70806   584135.7 
+44   132 
+85.70807   715080.7 
+44   132 
+85.70816   715080.7 
+44   132 
+85.70807   715081.4 
+44   132 
+85.70809   846026.3 
+44   132 
+85.70817   846026.3 
+44   132 
+85.70809   846027.1 
+44   132 
+85.7081   976971.9 
+44   132 
+85.70819   976971.9 
+44   132 
+85.7081   976972.9 
+Fit Mean:  85.7081  Size:  976971.9  Code:  1 
+> 
+> cat("Final Fit Mean: ", nb_fit_mu, " Size: ", nb_fit_size, " Code: ", nb_fit$code, " Try Size: ", try_size, "\n")
+Final Fit Mean:  85.7081  Size:  976971.9  Code:  1  Try Size:  100 
+> 
+> ## Fit failed = reset parameters so graphing and output code can recognize this
+> if ((nb_fit_mu < 0) || (nb_fit_size < 0) || (nb_fit$code != 1))
++ {
++   nb_fit_mu = 0
++   nb_fit_size = 0
++ }
+> 
+> 
+> ## things can go wrong with fitting and we can still end up with invalid values
+> 
+> fit_nb = c()
+> included_fract = 0
+> if (nb_fit_mu > 0)
++ {
++   end_fract = pnbinom(end_i_for_fits, mu = nb_fit_mu, size=nb_fit_size)
++   start_fract = pnbinom(start_i_for_fits, mu = nb_fit_mu, size=nb_fit_size)
++   included_fract = end_fract-start_fract;
++ 
++   if (included_fract >= 0.01) {
++ 
++     ## Adjust so that we are back in full coords before making fit!!
++     if (num_per_bin > 1) 
++     {
++       nb_fit_mu = nb_fit_mu * num_per_bin
++     }
++     fit_nb = dnbinom(0:max(X$coverage), mu = nb_fit_mu, size=nb_fit_size)*inner_total/included_fract;
++   }
++ }
+> 
+> ## If an insufficient amount of fit was included, then invalidate it
+> if (included_fract < 0.01)
++ {
++   nb_fit_mu = 0
++   nb_fit_size = 0
++ }
+> 
+> f_p <- function(par) {
++ 
++   lambda = par[1];
++ 
++   if (lambda <= 0)
++   {
++     return(0);
++   }
++   
++ 	total <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{	
++     #cat(i, " ", lambda, "\n");
++ 		dist[i] <- dpois(i, lambda=lambda);
++ 		total <- total + dist[i] 
++ 	}
++ 	#print (total)
++ 
++  	l <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{
++ 		l <- l + ((X.for.fits[i]/inner_total)-(dist[i]/total))^2;
++ 	}
++ 	return(l);
++ }
+> 
+> 
+> ## Fit Poisson 
+> ## - allow fit to fail and set all params to zero/empty if that is the case
+> 
+> p_fit = NULL
+> try(suppressWarnings(p_fit<-nlm(f_p, c(m), print.level=this.print.level)))
+> 
+> fit_p = c()
+> if (!is.null(p_fit) && (p_fit$estimate[1] > 0))
++ {
++   #print (nb_fit$estimate[1])
++   p_fit_lambda = p_fit$estimate[1];
++   #print(0:max(X$coverage))
++ 
++   end_fract = ppois(end_i_for_fits, lambda = p_fit_lambda)
++   start_fract = ppois(start_i_for_fits, lambda = p_fit_lambda)
++   included_fract = end_fract-start_fract;
++ 
++   ## Adjust so that we are back in full coords before making fit!!
++   if (num_per_bin > 1) 
++   {
++     p_fit_lambda = p_fit_lambda * num_per_bin
++   }
++   fit_p<-dpois(0:max(X$coverage), lambda = p_fit_lambda)*inner_total/included_fract;
++ }
+> 
+> 
+> ## Graphing
+> ##
+> ## don't graph very high values with very little coverage
+> i<-max_i
+> while (i <= length(X$n) && X$n[i]>0.01*max_n)
++ {		
++ 	i <- i+1;
++ }
+> graph_end_i <-i
+> 
+> ## Ths leaves enough room to the right of the peak for the legend
+> graph_end_i = max(floor(2.2 * max_i), graph_end_i);
+> 
+> ## graphics settings
+> my_pch = 21
+> my_col = "black";
+> my_col_censored = "red";
+> 
+> if (pdf_output == 0) {
++   
++   ## bitmap() requires ghostscript to be installed.
++   ## taa=4, gaa=2 options NOT compatible with earlier R versions!
++   ## units = "px" NOT compatible with even earlier R versions!
++   
++   if(!capabilities(what = "png"))
++   {
++     ## fallback to ghostscript
++     bitmap(plot_file, height=6, width=7, type = "png16m", res = 72, pointsize=18)
++   } else {
++     ## use X11 function, which gives better resolution
++     png(plot_file, height=6, width=7, units ="in", res = 72, pointsize=18)
++     par(family="sans")
++   }
++ } else {
++   pdf(plot_file, height=6, width=7)
++   par(family="sans")
++ }
+> 
+> par(mar=c(5.5,7.5,3,1.5));
+> 
+> max_y = 0
+> if (plot_poisson) {
++ 	max_y = max(X$n, fit_p, fit_nb)
++ } else {
++ 	max_y = max(X$n, fit_nb)
++ }
+> 
+> plot(0:10, 0:10, type="n", lty="solid", ylim=c(0, max_y)*1.05, xlim=c(0, graph_end_i), lwd=1, xaxs="i", yaxs="i", axes=F, las=1, main="Coverage Distribution at Unique-Only Positions", xlab="Coverage depth (reads)", ylab="", cex.lab=1.2, cex.axis=1.2)
+> 
+> mtext(side = 2, text = "Number of reference positions", line = 5.5, cex=1.2)
+> 
+> sciNotation <- function(x, digits = 1) {
++     if (length(x) > 1) {
++         return(append(sciNotation(x[1]), sciNotation(x[-1])))     
++ 	} 
++     if (!x) return(0) 
++ 
++ 	exponent <- floor(log10(x)) 
++     base <- round(x / 10^exponent, digits)     
++ 	as.expression(substitute(base %*% 10^exponent, list(base = base, exponent = exponent))) 
++ }
+> 
+> #axis(2, cex.lab=1.2, las=1, cex.axis=1.2, labels=T, at=(0:6)*50000)
+> axis(2, cex.lab=1.2, las=1, cex.axis=1.2, at = axTicks(2), labels = sciNotation(axTicks(2), 1))
+> axis(1, cex.lab=1.2, cex.axis=1.2, labels=T)
+> box()
+> 
+> #graph the coverage as points
+> fit_data <- subset(X, (coverage>=start_i) & (coverage<=end_i) );
+> points(fit_data$coverage, fit_data$n, pch=my_pch, col=my_col, bg="white", cex=1.2)
+> 
+> #graph the censored coverage as red points
+> cat(start_i, " ", end_i, "\n", sep="")
+44 132
+> 
+> censored_data <- subset(X, (coverage<start_i) | (coverage>end_i) );
+> points(censored_data$coverage, censored_data$n, pch=my_pch, col=my_col_censored, bg="white", cex=1.2)
+> 
+> #graph the poisson fit IF REQUESTED
+> if (plot_poisson) {
++ 	lines(0:max(X$coverage), fit_p, lwd=3, lty="22", col="black");
++ }
+> 
+> #graph the negative binomial fit
+> if (nb_fit_mu > 0) {
++   lines(0:max(X$coverage), fit_nb, lwd=3, col="black");
++ }
+> 
+> if (plot_poisson) {
++ 	legend("topright", c("Coverage distribution", "Censored data", "Negative binomial", "Poisson"), lty=c("blank","blank","solid","22"), lwd=c(1,1,2,2), pch=c(my_pch, my_pch, -1, -1), col=c("black", "red", "black", "black"), bty="n")
++ } else {
++ 	legend("topright", c("Coverage distribution", "Censored data", "Negative binomial"), lty=c("blank","blank","solid"), lwd=c(1,1,2), pch=c(my_pch, my_pch, -1), col=c("black", "red", "black"), bty="n")
++ }
+> 
+> dev.off()
+null device 
+          1 
+> 
+> ## Fit the marginal value that we use for propagating deletions
+> 
+> if (nb_fit_mu > 0) {
++   cat(nb_fit_size, " ", nb_fit_mu, "\n")
++   deletion_propagation_coverage = suppressWarnings(qnbinom(deletion_propagation_pr_cutoff, size = nb_fit_size, mu = nb_fit_mu))
++ } else {
++   cat("Fallback to calculating off an estimate of just variance = mu + mu^2/size\n")
++   size_estimate = (1/(v-m))*(m*m)
++   cat("Mu estimate=", m," Size estimate =", size_estimate, "\n")
++   deletion_propagation_coverage = suppressWarnings(qnbinom(deletion_propagation_pr_cutoff, size = size_estimate, mu = m))
++   if (is.na(deletion_propagation_coverage) || is.nan(deletion_propagation_coverage) || (deletion_propagation_coverage < 1)) {
++     cat("Double fallback to calculating as just 10% of the mean\n")
++     deletion_propagation_coverage = m * 0.1
++   }
++ }
+976971.9   85.7081 
+> 
+> #Don't allow one read to indicate non-deleted regions
+> if (deletion_propagation_coverage < 1) {
++     deletion_propagation_coverage = 1
++ }
+> 
+> #This works fine with the negative values
+> #If we have both low fit coverage and low straight average coverage then we're deleted...
+> if ( (nb_fit_mu <= 3) && (m <= 3) ) {
++   deletion_propagation_coverage = -1
++ }
+> 
+> #print out statistics
+> 
+> print(nb_fit_size);
+[1] 976971.9
+> print(nb_fit_mu);
+[1] 85.7081
+> 
+> print(m)
+[1] 91.4
+> print(v)
+[1] 348.3243
+> print(D)
+[1] 3.810988
+> 
+> print(deletion_propagation_coverage)
+[1] 62
+> 
+> warnings()
+> 

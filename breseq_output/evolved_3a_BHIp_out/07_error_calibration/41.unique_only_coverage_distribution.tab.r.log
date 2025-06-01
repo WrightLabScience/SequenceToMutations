@@ -1,0 +1,1906 @@
+
+R version 4.3.1 (2023-06-16) -- "Beagle Scouts"
+Copyright (C) 2023 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> ##
+> ##
+> ## AUTHORS
+> ##
+> ## Jeffrey E. Barrick <jeffrey.e.barrick@gmail.com>
+> ##
+> ## LICENSE AND COPYRIGHT
+> ##
+> ## Copyright (c) 2008-2010 Michigan State University
+> ## Copyright (c) 2011-2022 The University of Texas at Austin
+> ##
+> ## breseq is free software; you can redistribute it and/or modify it under the
+> ## terms the GNU General Public License as published by the Free Software
+> ## Foundation; either version 1, or (at your option) any later version.
+> ##
+> ##
+> 
+> ## Arguments:
+> ##   distribution_file=/path/to/input 
+> ##   plot_file=/path/to/output 
+> ##   deletion_propagation_pr_cutoff=float
+> ##   plot_poisson=0 or 1
+> ##   pdf_output=0 or 1
+> 
+> ## Returns these values printed out to output log
+> ## 
+> ##  1. print(nb_fit_size); # 0 if fit failed
+> ##  2. print(nb_fit_mu);   # 0 if fit failed
+> ##  3. print(m)q
+> ##  4. print(v)
+> ##  5. print(D)
+> ##  6. print(deletion_propagation_coverage)
+> ##     -1 if it was <1 after fitting (implying reference sequence is deleted)
+> ##
+> 
+> plot_poisson = 0;
+> pdf_output = 1;
+> 
+> this.print.level = 0
+> #this.print.level = 2
+> 
+> for (e in commandArgs(TRUE)) {
++   ta = strsplit(e,"=",fixed=TRUE)[[1]]
++   if(length(ta)>1) {
++     temp = ta[2]
++     assign(ta[1],temp)
++     cat("assigned ",ta[1]," the value of |",temp,"|\n")
++   } else {
++     assign(ta[[1]][1],TRUE)
++     cat("assigned ",ta[1]," the value of TRUE\n")
++   }
++ }
+assigned  distribution_file  the value of | 3a+_BHI_c50_out/07_error_calibration/41.unique_only_coverage_distribution.tab |
+assigned  plot_file  the value of | 3a+_BHI_c50_out/output/calibration/41.unique_coverage.pdf |
+assigned  deletion_propagation_pr_cutoff  the value of | 0.000628595 |
+> 
+> deletion_propagation_pr_cutoff = as.numeric(deletion_propagation_pr_cutoff);
+> 
+> ## initialize values to be filled in
+> nb_fit_mu = 0
+> nb_fit_size = 0
+> m = 0
+> v = 0
+> D = 0
+> deletion_propagation_coverage = -1
+> 
+> min_fraction_included_in_nb_fit = 0.01
+> 
+> #load data
+> X<-read.table(distribution_file, header=T)
+> 
+> #table might be empty
+> if (nrow(X) == 0)
++ {
++   #print out statistics
++   
++   print(nb_fit_size);
++   print(nb_fit_mu);
++   
++   print(m)
++   print(v)
++   print(D)
++   
++   print(deletion_propagation_coverage)
++   
++   q()
++ }
+> 
+> #create the distribution vector and fit
+> Y<-rep(X$coverage, X$n)
+> m<-mean(Y)
+> v<-var(Y)
+> D<-v/m
+> 
+> ###
+> ## Smooth the distribution with a moving average window of size 5
+> ## so that we can more reliably find it's maximum value
+> ###
+> 
+> ma5 = c(1, 1, 1, 1, 1)/5;
+> 
+> ## filtering fails if there are too few points
+> if (nrow(X) >= 5) {
++   X$ma = filter(X$n, ma5)
++ } else {
++ 	X$ma = X$n
++ }
+> 
+> i<-0
+> max_n <- 0;
+> min_i <- max( trunc(m/4), 1 ); #prevents zero for pathological distributions
+> max_i <- i;
+> for (i in min_i:length(X$ma))
++ {		
++   #cat(i, "\n")
++ 	if (!is.na(X$ma[i]) && (X$ma[i] > max_n))
++ 	{
++ 		max_n = X$ma[i];
++ 		max_i = i;
++ 	}
++ }
+> 
+> ##
+> # Censor data on the right and left of the maximum
+> ##
+> 
+> start_i = max(floor(max_i*0.5), 1);
+> end_i = min(ceiling(max_i*1.5), length(X$ma));
+> 
+> if (start_i == end_i)
++ {
++   print(nb_fit_size);
++   print(nb_fit_mu);
++   
++   print(m)
++   print(v)
++   print(D)
++   
++   print(deletion_propagation_coverage)
++   
++   q()
++ }
+> 
+> cat("Fitting from coverage of ", start_i, " to ", end_i, ".\n", sep="")
+Fitting from coverage of 35 to 107.
+> 
+> ##
+> # Coarse grain so that we are only fitting a number of bins that is 1000-2000
+> #
+> # The later adjustment for doing the fits this way is to multiply the means
+> # of the negative binomial and poisson distributions by the binning number.
+> # (The size parameter of the negative binomial doesn't need to be adjusted.)
+> ##
+> 
+> 
+> num_per_bin = trunc((end_i - start_i) / 1000)
+> 
+> if (num_per_bin > 1) 
++ {
++   cat("Coarse-graining for fits\n")
++   start_i_for_fits = trunc(start_i/num_per_bin)
++   end_i_for_fits = ceiling(end_i/num_per_bin)
++   num_bins = end_i - start_i  + 1
++   cat("Fitting from coverage in adjusted bins ", start_i_for_fits, " to ", end_i_for_fits, ".\n", sep="")
++   cat("Number of bins ", num_bins, ". Each bin has ", num_per_bin, " coverage values.\n", sep="")
++ 
++   # Create a new vector where we've added together values in bins
++   X.for.fits = vector("double", end_i_for_fits)
++   for (i in start_i_for_fits:end_i_for_fits)
++   {
++     for (j in 1:num_per_bin)
++     {
++       if (i*num_per_bin+j <= length(X$n))
++       {
++         X.for.fits[i] = X.for.fits[i] + X$n[i*num_per_bin+j]
++       }
++     }
++   }
++ 
++ } else {
++   ## AVOID num_per_bin equalling zero!!
++   X.for.fits = X$n[1:end_i]
++   num_per_bin = 1
++   start_i_for_fits = start_i
++   end_i_for_fits = end_i
++ }
+> 
+> 
+> ##
+> # Now perform negative binomial fitting to the censored data
+> ##
+> 
+> inner_total<-0;
+> for (i in start_i_for_fits:end_i_for_fits)
++ {
++ 	inner_total = inner_total + X.for.fits[i]; 
++ }
+> # Yes: it's correct to use X here because we want the overall total total
+> total_total<-sum(X$n);
+> 
+> ## let's preconstruct these for speed
+> dist = vector("double", end_i_for_fits)
+> 
+> f_nb <- function(par) {
++ 
++ 	mu = par[1];
++ 	size = par[2];
++ 
++   if ((mu <= 0) || (size <= 0))
++   {
++     return(0);
++   }
++   
++   cat(start_i_for_fits, " ", end_i_for_fits, "\n");
++   cat(mu, " ", size, "\n");
++   
++ 	dist<-c()
++ 	total <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{	
++ 		dist[i] <- dnbinom(i, size=size, mu=mu);
++ 		total <- total + dist[i] 
++ 	}
++ 	#print (mu, size)
++ 
++  	l <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{
++ 		l <- l + ((X.for.fits[i]/inner_total)-(dist[i]/total))^2;
++ 	}
++ 	return(l);
++ }
+> 
+> 
+> 
+> ## Fit negative binomial 
+> ## - allow fit to fail and set all params to zero/empty if that is the case
+> nb_fit = NULL
+> ## as.numeric prevents overflow in sums involving integers
+> mean_estimate = sum((as.numeric(1:end_i_for_fits)*as.numeric(X.for.fits)))/sum(as.numeric(X.for.fits))
+> 
+> nb_fit_mu = -1
+> nb_fit_size = -1
+> try_size = 100000
+> try_means_index = 1
+> #This is a list of different means to test <-  sometimes the actual mean doesn't lead to a fit
+> try_means = c(mean_estimate, 
++               end_i_for_fits, 
++               start_i_for_fits, 
++               1*(end_i_for_fits + start_i_for_fits)/4,
++               2*(end_i_for_fits + start_i_for_fits)/4,
++               3*(end_i_for_fits + start_i_for_fits)/4
++               )
+>               
+>               
+> nb_fit = c()
+> 
+> while ( ((nb_fit_mu < 0) || (nb_fit_size < 0) || (nb_fit$code != 1)) && (try_size > 0.001) && (try_means_index <= length(try_means)))
++ {
++   try_size = try_size / 10
++   try_mean = try_means[try_means_index]
++ 
++   ## SIZE ESTIMATE from the censored data can be negative, so try various values instead
++   cat("Try Mean: ", try_mean, " Size: ", try_size, "\n")
++ 
++   try( suppressWarnings(nb_fit<-nlm(f_nb, c(try_mean, try_size), iterlim=1000, print.level=this.print.level)) )
++ 
++   nb_fit_mu = nb_fit$estimate[1];
++   nb_fit_size = nb_fit$estimate[2];
++ 
++   cat("Fit Mean: ", nb_fit_mu, " Size: ", nb_fit_size, " Code: ", nb_fit$code, "\n")
++   
++   if (try_size <= 0.001) {
++     try_size = 100000
++     try_means_index = try_means_index + 1
++   }
++ }
+Try Mean:  73.86103  Size:  10000 
+35   107 
+73.86103   10000 
+35   107 
+73.86103   10000 
+35   107 
+73.86111   10000 
+35   107 
+73.86103   10000.01 
+35   107 
+73.86068   10000 
+35   107 
+73.86075   10000 
+35   107 
+73.86068   10000.01 
+35   107 
+72.07504   10000 
+35   107 
+72.07512   10000 
+35   107 
+72.07504   10000.01 
+35   107 
+72.21216   10000 
+35   107 
+72.21223   10000 
+35   107 
+72.21216   10000.01 
+35   107 
+72.2037   10000 
+35   107 
+72.20377   10000 
+35   107 
+72.2037   10000.01 
+35   107 
+72.20366   10000 
+35   107 
+72.20374   10000 
+35   107 
+72.20366   10000.01 
+Fit Mean:  72.20366  Size:  10000  Code:  2 
+Try Mean:  73.86103  Size:  1000 
+35   107 
+73.86103   1000 
+35   107 
+73.86103   1000 
+35   107 
+73.86111   1000 
+35   107 
+73.86103   1000.001 
+35   107 
+73.86072   1000 
+35   107 
+73.86079   1000 
+35   107 
+73.86072   1000.001 
+35   107 
+72.22185   999.9943 
+35   107 
+72.22193   999.9943 
+35   107 
+72.22185   999.9953 
+35   107 
+72.33455   999.992 
+35   107 
+72.33463   999.992 
+35   107 
+72.33455   999.993 
+35   107 
+72.32825   999.9894 
+35   107 
+72.32832   999.9894 
+35   107 
+72.32825   999.9904 
+35   107 
+72.32719   999.9858 
+35   107 
+72.32726   999.9858 
+35   107 
+72.32719   999.9868 
+35   107 
+72.32002   999.9367 
+35   107 
+72.32009   999.9367 
+35   107 
+72.32002   999.9377 
+35   107 
+72.31179   999.8275 
+35   107 
+72.31187   999.8275 
+35   107 
+72.31179   999.8285 
+35   107 
+72.29641   999.4707 
+35   107 
+72.29648   999.4707 
+35   107 
+72.29641   999.4717 
+35   107 
+72.27281   998.5364 
+35   107 
+72.27288   998.5364 
+35   107 
+72.27281   998.5374 
+35   107 
+72.23372   995.9589 
+35   107 
+72.23379   995.9589 
+35   107 
+72.23372   995.9599 
+35   107 
+72.1702   989.0722 
+35   107 
+72.17027   989.0722 
+35   107 
+72.1702   989.0732 
+35   107 
+72.06297   970.2928 
+35   107 
+72.06304   970.2928 
+35   107 
+72.06297   970.2938 
+35   107 
+71.86731   916.9088 
+35   107 
+71.86738   916.9088 
+35   107 
+71.86731   916.9097 
+35   107 
+71.39487   734.3144 
+35   107 
+71.39494   734.3144 
+35   107 
+71.39487   734.3151 
+Fit Mean:  19.59642  Size:  -20163.48  Code:  1 
+Try Mean:  73.86103  Size:  100 
+35   107 
+73.86103   100 
+35   107 
+73.86103   100 
+35   107 
+73.86111   100 
+35   107 
+73.86103   100.0001 
+35   107 
+73.86094   99.99999 
+35   107 
+73.86102   99.99999 
+35   107 
+73.86094   100.0001 
+35   107 
+73.21852   99.79453 
+35   107 
+73.21859   99.79453 
+35   107 
+73.21852   99.79463 
+35   107 
+73.21776   99.6901 
+35   107 
+73.21783   99.6901 
+35   107 
+73.21776   99.69019 
+35   107 
+73.21859   99.58611 
+35   107 
+73.21866   99.58611 
+35   107 
+73.21859   99.58621 
+35   107 
+73.21939   99.48206 
+35   107 
+73.21946   99.48206 
+35   107 
+73.21939   99.48216 
+35   107 
+73.22019   99.37796 
+35   107 
+73.22027   99.37796 
+35   107 
+73.22019   99.37806 
+35   107 
+73.221   99.27381 
+35   107 
+73.22107   99.27381 
+35   107 
+73.221   99.27391 
+35   107 
+73.22181   99.1696 
+35   107 
+73.22188   99.1696 
+35   107 
+73.22181   99.1697 
+35   107 
+73.22261   99.06533 
+35   107 
+73.22269   99.06533 
+35   107 
+73.22261   99.06543 
+35   107 
+73.22343   98.96101 
+35   107 
+73.2235   98.96101 
+35   107 
+73.22343   98.96111 
+35   107 
+73.22424   98.85664 
+35   107 
+73.22431   98.85664 
+35   107 
+73.22424   98.85674 
+35   107 
+73.22505   98.75221 
+35   107 
+73.22513   98.75221 
+35   107 
+73.22505   98.75231 
+35   107 
+73.22587   98.64773 
+35   107 
+73.22594   98.64773 
+35   107 
+73.22587   98.64783 
+35   107 
+73.22669   98.5432 
+35   107 
+73.22676   98.5432 
+35   107 
+73.22669   98.5433 
+35   107 
+73.22751   98.43861 
+35   107 
+73.22758   98.43861 
+35   107 
+73.22751   98.43871 
+35   107 
+73.22833   98.33397 
+35   107 
+73.2284   98.33397 
+35   107 
+73.22833   98.33407 
+35   107 
+73.22915   98.22927 
+35   107 
+73.22923   98.22927 
+35   107 
+73.22915   98.22937 
+35   107 
+73.22998   98.12452 
+35   107 
+73.23005   98.12452 
+35   107 
+73.22998   98.12462 
+35   107 
+73.23081   98.01972 
+35   107 
+73.23088   98.01972 
+35   107 
+73.23081   98.01982 
+35   107 
+73.23164   97.91487 
+35   107 
+73.23171   97.91487 
+35   107 
+73.23164   97.91496 
+35   107 
+73.23247   97.80996 
+35   107 
+73.23254   97.80996 
+35   107 
+73.23247   97.81006 
+35   107 
+73.2333   97.705 
+35   107 
+73.23337   97.705 
+35   107 
+73.2333   97.7051 
+35   107 
+73.23414   97.59998 
+35   107 
+73.23421   97.59998 
+35   107 
+73.23414   97.60008 
+35   107 
+73.23497   97.49492 
+35   107 
+73.23505   97.49492 
+35   107 
+73.23497   97.49502 
+35   107 
+73.23581   97.3898 
+35   107 
+73.23588   97.3898 
+35   107 
+73.23581   97.3899 
+35   107 
+73.23665   97.28463 
+35   107 
+73.23672   97.28463 
+35   107 
+73.23665   97.28472 
+35   107 
+73.23749   97.1794 
+35   107 
+73.23757   97.1794 
+35   107 
+73.23749   97.1795 
+35   107 
+73.23834   97.07413 
+35   107 
+73.23841   97.07413 
+35   107 
+73.23834   97.07422 
+35   107 
+73.23918   96.9688 
+35   107 
+73.23926   96.9688 
+35   107 
+73.23918   96.9689 
+35   107 
+73.24003   96.86342 
+35   107 
+73.24011   96.86342 
+35   107 
+73.24003   96.86351 
+35   107 
+73.24088   96.75799 
+35   107 
+73.24096   96.75799 
+35   107 
+73.24088   96.75808 
+35   107 
+73.24173   96.6525 
+35   107 
+73.24181   96.6525 
+35   107 
+73.24173   96.6526 
+35   107 
+73.24259   96.54697 
+35   107 
+73.24266   96.54697 
+35   107 
+73.24259   96.54706 
+35   107 
+73.24344   96.44138 
+35   107 
+73.24352   96.44138 
+35   107 
+73.24344   96.44147 
+35   107 
+73.2443   96.33574 
+35   107 
+73.24437   96.33574 
+35   107 
+73.2443   96.33584 
+35   107 
+73.24516   96.23005 
+35   107 
+73.24523   96.23005 
+35   107 
+73.24516   96.23015 
+35   107 
+73.24602   96.12431 
+35   107 
+73.2461   96.12431 
+35   107 
+73.24602   96.1244 
+35   107 
+73.24689   96.01852 
+35   107 
+73.24696   96.01852 
+35   107 
+73.24689   96.01861 
+35   107 
+73.24775   95.91267 
+35   107 
+73.24782   95.91267 
+35   107 
+73.24775   95.91277 
+35   107 
+73.24862   95.80678 
+35   107 
+73.24869   95.80678 
+35   107 
+73.24862   95.80687 
+35   107 
+73.24949   95.70083 
+35   107 
+73.24956   95.70083 
+35   107 
+73.24949   95.70093 
+35   107 
+73.25036   95.59484 
+35   107 
+73.25043   95.59484 
+35   107 
+73.25036   95.59493 
+35   107 
+73.25123   95.48879 
+35   107 
+73.25131   95.48879 
+35   107 
+73.25123   95.48889 
+35   107 
+73.25211   95.3827 
+35   107 
+73.25218   95.3827 
+35   107 
+73.25211   95.38279 
+35   107 
+73.25299   95.27655 
+35   107 
+73.25306   95.27655 
+35   107 
+73.25299   95.27665 
+35   107 
+73.25386   95.17036 
+35   107 
+73.25394   95.17036 
+35   107 
+73.25386   95.17045 
+35   107 
+73.25475   95.06411 
+35   107 
+73.25482   95.06411 
+35   107 
+73.25475   95.06421 
+35   107 
+73.25563   94.95782 
+35   107 
+73.2557   94.95782 
+35   107 
+73.25563   94.95791 
+35   107 
+73.25651   94.85147 
+35   107 
+73.25659   94.85147 
+35   107 
+73.25651   94.85157 
+35   107 
+73.2574   94.74508 
+35   107 
+73.25748   94.74508 
+35   107 
+73.2574   94.74517 
+35   107 
+73.25829   94.63863 
+35   107 
+73.25836   94.63863 
+35   107 
+73.25829   94.63873 
+35   107 
+73.25918   94.53214 
+35   107 
+73.25926   94.53214 
+35   107 
+73.25918   94.53224 
+35   107 
+73.26008   94.4256 
+35   107 
+73.26015   94.4256 
+35   107 
+73.26008   94.4257 
+35   107 
+73.26097   94.31901 
+35   107 
+73.26104   94.31901 
+35   107 
+73.26097   94.31911 
+35   107 
+73.26187   94.21237 
+35   107 
+73.26194   94.21237 
+35   107 
+73.26187   94.21247 
+35   107 
+73.26277   94.10569 
+35   107 
+73.26284   94.10569 
+35   107 
+73.26277   94.10578 
+35   107 
+73.26367   93.99895 
+35   107 
+73.26374   93.99895 
+35   107 
+73.26367   93.99905 
+35   107 
+73.26457   93.89217 
+35   107 
+73.26465   93.89217 
+35   107 
+73.26457   93.89226 
+35   107 
+73.26548   93.78534 
+35   107 
+73.26555   93.78534 
+35   107 
+73.26548   93.78543 
+35   107 
+73.26639   93.67846 
+35   107 
+73.26646   93.67846 
+35   107 
+73.26639   93.67856 
+35   107 
+73.2673   93.57154 
+35   107 
+73.26737   93.57154 
+35   107 
+73.2673   93.57163 
+35   107 
+73.26821   93.46456 
+35   107 
+73.26828   93.46456 
+35   107 
+73.26821   93.46466 
+35   107 
+73.26912   93.35754 
+35   107 
+73.2692   93.35754 
+35   107 
+73.26912   93.35764 
+35   107 
+73.27004   93.25048 
+35   107 
+73.27011   93.25048 
+35   107 
+73.27004   93.25057 
+35   107 
+73.27096   93.14336 
+35   107 
+73.27103   93.14336 
+35   107 
+73.27096   93.14346 
+35   107 
+73.27188   93.0362 
+35   107 
+73.27195   93.0362 
+35   107 
+73.27188   93.0363 
+35   107 
+73.2728   92.929 
+35   107 
+73.27287   92.929 
+35   107 
+73.2728   92.92909 
+35   107 
+73.27372   92.82174 
+35   107 
+73.2738   92.82174 
+35   107 
+73.27372   92.82184 
+35   107 
+73.27465   92.71444 
+35   107 
+73.27473   92.71444 
+35   107 
+73.27465   92.71454 
+35   107 
+73.27558   92.6071 
+35   107 
+73.27565   92.6071 
+35   107 
+73.27558   92.60719 
+35   107 
+73.27651   92.49971 
+35   107 
+73.27658   92.49971 
+35   107 
+73.27651   92.4998 
+35   107 
+73.27744   92.39227 
+35   107 
+73.27752   92.39227 
+35   107 
+73.27744   92.39237 
+35   107 
+73.27838   92.28479 
+35   107 
+73.27845   92.28479 
+35   107 
+73.27838   92.28488 
+35   107 
+73.27932   92.17727 
+35   107 
+73.27939   92.17727 
+35   107 
+73.27932   92.17736 
+35   107 
+73.28026   92.0697 
+35   107 
+73.28033   92.0697 
+35   107 
+73.28026   92.06979 
+35   107 
+73.2812   91.96208 
+35   107 
+73.28127   91.96208 
+35   107 
+73.2812   91.96217 
+35   107 
+73.28214   91.85442 
+35   107 
+73.28222   91.85442 
+35   107 
+73.28214   91.85451 
+35   107 
+73.28309   91.74672 
+35   107 
+73.28316   91.74672 
+35   107 
+73.28309   91.74681 
+35   107 
+73.28404   91.63897 
+35   107 
+73.28411   91.63897 
+35   107 
+73.28404   91.63906 
+35   107 
+73.28499   91.53118 
+35   107 
+73.28506   91.53118 
+35   107 
+73.28499   91.53127 
+35   107 
+73.28594   91.42334 
+35   107 
+73.28601   91.42334 
+35   107 
+73.28594   91.42343 
+35   107 
+73.2869   91.31546 
+35   107 
+73.28697   91.31546 
+35   107 
+73.2869   91.31555 
+35   107 
+73.28785   91.20754 
+35   107 
+73.28793   91.20754 
+35   107 
+73.28785   91.20763 
+35   107 
+73.28881   91.09957 
+35   107 
+73.28889   91.09957 
+35   107 
+73.28881   91.09966 
+35   107 
+73.28977   90.99157 
+35   107 
+73.28985   90.99157 
+35   107 
+73.28977   90.99166 
+35   107 
+73.29074   90.88352 
+35   107 
+73.29081   90.88352 
+35   107 
+73.29074   90.88361 
+35   107 
+73.2917   90.77542 
+35   107 
+73.29178   90.77542 
+35   107 
+73.2917   90.77551 
+35   107 
+73.29267   90.66729 
+35   107 
+73.29275   90.66729 
+35   107 
+73.29267   90.66738 
+35   107 
+73.29364   90.55911 
+35   107 
+73.29372   90.55911 
+35   107 
+73.29364   90.5592 
+35   107 
+73.29462   90.4509 
+35   107 
+73.29469   90.4509 
+35   107 
+73.29462   90.45099 
+35   107 
+73.29559   90.34264 
+35   107 
+73.29567   90.34264 
+35   107 
+73.29559   90.34273 
+35   107 
+73.29657   90.23434 
+35   107 
+73.29664   90.23434 
+35   107 
+73.29657   90.23443 
+35   107 
+73.29755   90.126 
+35   107 
+73.29762   90.126 
+35   107 
+73.29755   90.12609 
+35   107 
+73.29853   90.01762 
+35   107 
+73.2986   90.01762 
+35   107 
+73.29853   90.01771 
+35   107 
+73.29952   89.9092 
+35   107 
+73.29959   89.9092 
+35   107 
+73.29952   89.90929 
+35   107 
+73.3005   89.80073 
+35   107 
+73.30058   89.80073 
+35   107 
+73.3005   89.80082 
+35   107 
+73.30149   89.69223 
+35   107 
+73.30156   89.69223 
+35   107 
+73.30149   89.69232 
+35   107 
+73.30248   89.58369 
+35   107 
+73.30256   89.58369 
+35   107 
+73.30248   89.58378 
+35   107 
+73.30348   89.47511 
+35   107 
+73.30355   89.47511 
+35   107 
+73.30348   89.4752 
+35   107 
+73.30447   89.3665 
+35   107 
+73.30454   89.3665 
+35   107 
+73.30447   89.36659 
+35   107 
+73.30547   89.25784 
+35   107 
+73.30554   89.25784 
+35   107 
+73.30547   89.25793 
+35   107 
+73.30647   89.14914 
+35   107 
+73.30654   89.14914 
+35   107 
+73.30647   89.14923 
+35   107 
+73.30747   89.04041 
+35   107 
+73.30755   89.04041 
+35   107 
+73.30747   89.0405 
+35   107 
+73.30848   88.93164 
+35   107 
+73.30855   88.93164 
+35   107 
+73.30848   88.93173 
+35   107 
+73.30949   88.82283 
+35   107 
+73.30956   88.82283 
+35   107 
+73.30949   88.82292 
+35   107 
+73.3105   88.71398 
+35   107 
+73.31057   88.71398 
+35   107 
+73.3105   88.71407 
+35   107 
+73.31151   88.6051 
+35   107 
+73.31158   88.6051 
+35   107 
+73.31151   88.60519 
+35   107 
+73.31252   88.49618 
+35   107 
+73.3126   88.49618 
+35   107 
+73.31252   88.49627 
+35   107 
+73.31354   88.38722 
+35   107 
+73.31361   88.38722 
+35   107 
+73.31354   88.38731 
+35   107 
+73.31456   88.27823 
+35   107 
+73.31463   88.27823 
+35   107 
+73.31456   88.27832 
+35   107 
+73.31558   88.1692 
+35   107 
+73.31565   88.1692 
+35   107 
+73.31558   88.16929 
+35   107 
+73.31661   88.06014 
+35   107 
+73.31668   88.06014 
+35   107 
+73.31661   88.06023 
+35   107 
+73.31763   87.95104 
+35   107 
+73.31771   87.95104 
+35   107 
+73.31763   87.95113 
+35   107 
+73.31866   87.84191 
+35   107 
+73.31873   87.84191 
+35   107 
+73.31866   87.84199 
+35   107 
+73.31969   87.73274 
+35   107 
+73.31977   87.73274 
+35   107 
+73.31969   87.73282 
+35   107 
+73.32073   87.62353 
+35   107 
+73.3208   87.62353 
+35   107 
+73.32073   87.62362 
+35   107 
+73.32176   87.5143 
+35   107 
+73.32184   87.5143 
+35   107 
+73.32176   87.51438 
+35   107 
+73.3228   87.40503 
+35   107 
+73.32287   87.40503 
+35   107 
+73.3228   87.40511 
+35   107 
+73.32384   87.29572 
+35   107 
+73.32392   87.29572 
+35   107 
+73.32384   87.29581 
+35   107 
+73.32489   87.18639 
+35   107 
+73.32496   87.18639 
+35   107 
+73.32489   87.18647 
+35   107 
+73.32593   87.07702 
+35   107 
+73.32601   87.07702 
+35   107 
+73.32593   87.0771 
+35   107 
+73.32698   86.96761 
+35   107 
+73.32705   86.96761 
+35   107 
+73.32698   86.9677 
+35   107 
+73.32803   86.85818 
+35   107 
+73.32811   86.85818 
+35   107 
+73.32803   86.85827 
+35   107 
+73.32909   86.74872 
+35   107 
+73.32916   86.74872 
+35   107 
+73.32909   86.7488 
+35   107 
+73.33014   86.63922 
+35   107 
+73.33021   86.63922 
+35   107 
+73.33014   86.63931 
+35   107 
+73.3312   86.52969 
+35   107 
+73.33127   86.52969 
+35   107 
+73.3312   86.52978 
+35   107 
+73.33226   86.42013 
+35   107 
+73.33233   86.42013 
+35   107 
+73.33226   86.42022 
+35   107 
+73.33332   86.31054 
+35   107 
+73.3334   86.31054 
+35   107 
+73.33332   86.31063 
+35   107 
+73.33439   86.20092 
+35   107 
+73.33446   86.20092 
+35   107 
+73.33439   86.20101 
+35   107 
+73.33546   86.09128 
+35   107 
+73.33553   86.09128 
+35   107 
+73.33546   86.09136 
+35   107 
+73.33653   85.9816 
+35   107 
+73.3366   85.9816 
+35   107 
+73.33653   85.98168 
+35   107 
+73.3376   85.87189 
+35   107 
+73.33768   85.87189 
+35   107 
+73.3376   85.87198 
+35   107 
+73.33868   85.76216 
+35   107 
+73.33875   85.76216 
+35   107 
+73.33868   85.76224 
+35   107 
+73.33976   85.65239 
+35   107 
+73.33983   85.65239 
+35   107 
+73.33976   85.65248 
+35   107 
+73.34084   85.5426 
+35   107 
+73.34091   85.5426 
+35   107 
+73.34084   85.54269 
+35   107 
+73.34192   85.43278 
+35   107 
+73.342   85.43278 
+35   107 
+73.34192   85.43287 
+35   107 
+73.34301   85.32294 
+35   107 
+73.34308   85.32294 
+35   107 
+73.34301   85.32302 
+35   107 
+73.3441   85.21307 
+35   107 
+73.34417   85.21307 
+35   107 
+73.3441   85.21315 
+35   107 
+73.34519   85.10317 
+35   107 
+73.34526   85.10317 
+35   107 
+73.34519   85.10325 
+35   107 
+73.34628   84.99325 
+35   107 
+73.34636   84.99325 
+35   107 
+73.34628   84.99333 
+35   107 
+73.34738   84.8833 
+35   107 
+73.34745   84.8833 
+35   107 
+73.34738   84.88338 
+35   107 
+73.34848   84.77332 
+35   107 
+73.34855   84.77332 
+35   107 
+73.34848   84.77341 
+35   107 
+73.34958   84.66332 
+35   107 
+73.34965   84.66332 
+35   107 
+73.34958   84.66341 
+35   107 
+73.35069   84.5533 
+35   107 
+73.35076   84.5533 
+35   107 
+73.35069   84.55338 
+35   107 
+73.35179   84.44325 
+35   107 
+73.35187   84.44325 
+35   107 
+73.35179   84.44334 
+35   107 
+73.3529   84.33318 
+35   107 
+73.35298   84.33318 
+35   107 
+73.3529   84.33327 
+35   107 
+73.35401   84.22309 
+35   107 
+73.35409   84.22309 
+35   107 
+73.35401   84.22317 
+35   107 
+73.35513   84.11297 
+35   107 
+73.3552   84.11297 
+35   107 
+73.35513   84.11306 
+35   107 
+73.35625   84.00283 
+35   107 
+73.35632   84.00283 
+35   107 
+73.35625   84.00292 
+35   107 
+73.35737   83.89267 
+35   107 
+73.35744   83.89267 
+35   107 
+73.35737   83.89276 
+35   107 
+73.35849   83.78249 
+35   107 
+73.35856   83.78249 
+35   107 
+73.35849   83.78258 
+35   107 
+73.35961   83.67229 
+35   107 
+73.35969   83.67229 
+35   107 
+73.35961   83.67237 
+35   107 
+73.36074   83.56207 
+35   107 
+73.36082   83.56207 
+35   107 
+73.36074   83.56215 
+35   107 
+73.36187   83.45183 
+35   107 
+73.36195   83.45183 
+35   107 
+73.36187   83.45191 
+35   107 
+73.36301   83.34156 
+35   107 
+73.36308   83.34156 
+35   107 
+73.36301   83.34165 
+35   107 
+73.36414   83.23128 
+35   107 
+73.36422   83.23128 
+35   107 
+73.36414   83.23137 
+35   107 
+73.36528   83.12098 
+35   107 
+73.36536   83.12098 
+35   107 
+73.36528   83.12107 
+35   107 
+73.36642   83.01067 
+35   107 
+73.3665   83.01067 
+35   107 
+73.36642   83.01075 
+35   107 
+73.36757   82.90033 
+35   107 
+73.36764   82.90033 
+35   107 
+73.36757   82.90041 
+35   107 
+73.36871   82.78998 
+35   107 
+73.36879   82.78998 
+35   107 
+73.36871   82.79006 
+35   107 
+73.36986   82.67961 
+35   107 
+73.36994   82.67961 
+35   107 
+73.36986   82.67969 
+35   107 
+73.37102   82.56922 
+35   107 
+73.37109   82.56922 
+35   107 
+73.37102   82.5693 
+35   107 
+73.37217   82.45882 
+35   107 
+73.37224   82.45882 
+35   107 
+73.37217   82.4589 
+35   107 
+73.37333   82.3484 
+35   107 
+73.3734   82.3484 
+35   107 
+73.37333   82.34849 
+35   107 
+73.37449   82.23797 
+35   107 
+73.37456   82.23797 
+35   107 
+73.37449   82.23805 
+35   107 
+73.37565   82.12753 
+35   107 
+73.37573   82.12753 
+35   107 
+73.37565   82.12761 
+35   107 
+73.37682   82.01707 
+35   107 
+73.37689   82.01707 
+35   107 
+73.37682   82.01715 
+35   107 
+73.37799   81.90659 
+35   107 
+73.37806   81.90659 
+35   107 
+73.37799   81.90667 
+35   107 
+73.37916   81.79611 
+35   107 
+73.37923   81.79611 
+35   107 
+73.37916   81.79619 
+35   107 
+73.38033   81.68561 
+35   107 
+73.38041   81.68561 
+35   107 
+73.38033   81.68569 
+35   107 
+73.38151   81.5751 
+35   107 
+73.38158   81.5751 
+35   107 
+73.38151   81.57518 
+35   107 
+73.38269   81.46458 
+35   107 
+73.38276   81.46458 
+35   107 
+73.38269   81.46466 
+35   107 
+73.38387   81.35404 
+35   107 
+73.38395   81.35404 
+35   107 
+73.38387   81.35412 
+35   107 
+73.38506   81.2435 
+35   107 
+73.38513   81.2435 
+35   107 
+73.38506   81.24358 
+35   107 
+73.38625   81.13295 
+35   107 
+73.38632   81.13295 
+35   107 
+73.38625   81.13303 
+35   107 
+73.38744   81.02239 
+35   107 
+73.38751   81.02239 
+35   107 
+73.38744   81.02247 
+35   107 
+73.38863   80.91182 
+35   107 
+73.3887   80.91182 
+35   107 
+73.38863   80.9119 
+35   107 
+73.38983   80.80124 
+35   107 
+73.3899   80.80124 
+35   107 
+73.38983   80.80132 
+35   107 
+73.39103   80.69065 
+35   107 
+73.3911   80.69065 
+35   107 
+73.39103   80.69073 
+35   107 
+73.39223   80.58006 
+35   107 
+73.3923   80.58006 
+35   107 
+73.39223   80.58014 
+35   107 
+73.39343   80.46946 
+35   107 
+73.39351   80.46946 
+35   107 
+73.39343   80.46954 
+35   107 
+73.39464   80.35885 
+35   107 
+73.39471   80.35885 
+35   107 
+73.39464   80.35893 
+35   107 
+73.39585   80.24824 
+35   107 
+73.39592   80.24824 
+35   107 
+73.39585   80.24832 
+35   107 
+73.39706   80.13763 
+35   107 
+73.39714   80.13763 
+35   107 
+73.39706   80.13771 
+35   107 
+73.39828   80.02701 
+35   107 
+73.39835   80.02701 
+35   107 
+73.39828   80.02709 
+35   107 
+73.3995   79.91638 
+35   107 
+73.39957   79.91638 
+35   107 
+73.3995   79.91646 
+35   107 
+73.40072   79.80576 
+35   107 
+73.40079   79.80576 
+35   107 
+73.40072   79.80584 
+35   107 
+73.40195   79.69513 
+35   107 
+73.40202   79.69513 
+35   107 
+73.40195   79.69521 
+35   107 
+73.40317   79.5845 
+35   107 
+73.40325   79.5845 
+35   107 
+73.40317   79.58458 
+35   107 
+73.4044   79.47387 
+35   107 
+73.40448   79.47387 
+35   107 
+73.4044   79.47395 
+35   107 
+73.40564   79.36323 
+35   107 
+73.40571   79.36323 
+35   107 
+73.40564   79.36331 
+35   107 
+73.40687   79.2526 
+35   107 
+73.40695   79.2526 
+35   107 
+73.40687   79.25268 
+35   107 
+73.40811   79.14197 
+35   107 
+73.40819   79.14197 
+35   107 
+73.40811   79.14205 
+Fit Mean:  659.8883  Size:  -52157.67  Code:  1 
+Try Mean:  73.86103  Size:  10 
+35   107 
+73.86103   10 
+35   107 
+73.86103   10 
+35   107 
+73.86111   10 
+35   107 
+73.86103   10.00001 
+35   107 
+73.86119   10.00031 
+35   107 
+73.86126   10.00031 
+35   107 
+73.86119   10.00032 
+35   107 
+78.23263   17.19409 
+35   107 
+78.23271   17.19409 
+35   107 
+78.23263   17.19411 
+35   107 
+76.80691   19.89024 
+35   107 
+76.80699   19.89024 
+35   107 
+76.80691   19.89026 
+35   107 
+72.30819   30.8759 
+35   107 
+72.30826   30.8759 
+35   107 
+72.30819   30.87593 
+35   107 
+74.72893   31.07998 
+35   107 
+74.72901   31.07998 
+35   107 
+74.72893   31.08002 
+35   107 
+74.57315   34.16318 
+35   107 
+74.57323   34.16318 
+35   107 
+74.57315   34.16322 
+35   107 
+74.20721   38.85384 
+35   107 
+74.20728   38.85384 
+35   107 
+74.20721   38.85388 
+35   107 
+74.2028   40.53023 
+35   107 
+74.20287   40.53023 
+35   107 
+74.2028   40.53027 
+35   107 
+74.18854   41.05919 
+35   107 
+74.18862   41.05919 
+35   107 
+74.18854   41.05923 
+35   107 
+74.18857   41.10962 
+35   107 
+74.18864   41.10962 
+35   107 
+74.18857   41.10966 
+Fit Mean:  74.18857  Size:  41.10962  Code:  1 
+> 
+> cat("Final Fit Mean: ", nb_fit_mu, " Size: ", nb_fit_size, " Code: ", nb_fit$code, " Try Size: ", try_size, "\n")
+Final Fit Mean:  74.18857  Size:  41.10962  Code:  1  Try Size:  10 
+> 
+> ## Fit failed = reset parameters so graphing and output code can recognize this
+> if ((nb_fit_mu < 0) || (nb_fit_size < 0) || (nb_fit$code != 1))
++ {
++   nb_fit_mu = 0
++   nb_fit_size = 0
++ }
+> 
+> 
+> ## things can go wrong with fitting and we can still end up with invalid values
+> 
+> fit_nb = c()
+> included_fract = 0
+> if (nb_fit_mu > 0)
++ {
++   end_fract = pnbinom(end_i_for_fits, mu = nb_fit_mu, size=nb_fit_size)
++   start_fract = pnbinom(start_i_for_fits, mu = nb_fit_mu, size=nb_fit_size)
++   included_fract = end_fract-start_fract;
++ 
++   if (included_fract >= 0.01) {
++ 
++     ## Adjust so that we are back in full coords before making fit!!
++     if (num_per_bin > 1) 
++     {
++       nb_fit_mu = nb_fit_mu * num_per_bin
++     }
++     fit_nb = dnbinom(0:max(X$coverage), mu = nb_fit_mu, size=nb_fit_size)*inner_total/included_fract;
++   }
++ }
+> 
+> ## If an insufficient amount of fit was included, then invalidate it
+> if (included_fract < 0.01)
++ {
++   nb_fit_mu = 0
++   nb_fit_size = 0
++ }
+> 
+> f_p <- function(par) {
++ 
++   lambda = par[1];
++ 
++   if (lambda <= 0)
++   {
++     return(0);
++   }
++   
++ 	total <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{	
++     #cat(i, " ", lambda, "\n");
++ 		dist[i] <- dpois(i, lambda=lambda);
++ 		total <- total + dist[i] 
++ 	}
++ 	#print (total)
++ 
++  	l <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{
++ 		l <- l + ((X.for.fits[i]/inner_total)-(dist[i]/total))^2;
++ 	}
++ 	return(l);
++ }
+> 
+> 
+> ## Fit Poisson 
+> ## - allow fit to fail and set all params to zero/empty if that is the case
+> 
+> p_fit = NULL
+> try(suppressWarnings(p_fit<-nlm(f_p, c(m), print.level=this.print.level)))
+> 
+> fit_p = c()
+> if (!is.null(p_fit) && (p_fit$estimate[1] > 0))
++ {
++   #print (nb_fit$estimate[1])
++   p_fit_lambda = p_fit$estimate[1];
++   #print(0:max(X$coverage))
++ 
++   end_fract = ppois(end_i_for_fits, lambda = p_fit_lambda)
++   start_fract = ppois(start_i_for_fits, lambda = p_fit_lambda)
++   included_fract = end_fract-start_fract;
++ 
++   ## Adjust so that we are back in full coords before making fit!!
++   if (num_per_bin > 1) 
++   {
++     p_fit_lambda = p_fit_lambda * num_per_bin
++   }
++   fit_p<-dpois(0:max(X$coverage), lambda = p_fit_lambda)*inner_total/included_fract;
++ }
+> 
+> 
+> ## Graphing
+> ##
+> ## don't graph very high values with very little coverage
+> i<-max_i
+> while (i <= length(X$n) && X$n[i]>0.01*max_n)
++ {		
++ 	i <- i+1;
++ }
+> graph_end_i <-i
+> 
+> ## Ths leaves enough room to the right of the peak for the legend
+> graph_end_i = max(floor(2.2 * max_i), graph_end_i);
+> 
+> ## graphics settings
+> my_pch = 21
+> my_col = "black";
+> my_col_censored = "red";
+> 
+> if (pdf_output == 0) {
++   
++   ## bitmap() requires ghostscript to be installed.
++   ## taa=4, gaa=2 options NOT compatible with earlier R versions!
++   ## units = "px" NOT compatible with even earlier R versions!
++   
++   if(!capabilities(what = "png"))
++   {
++     ## fallback to ghostscript
++     bitmap(plot_file, height=6, width=7, type = "png16m", res = 72, pointsize=18)
++   } else {
++     ## use X11 function, which gives better resolution
++     png(plot_file, height=6, width=7, units ="in", res = 72, pointsize=18)
++     par(family="sans")
++   }
++ } else {
++   pdf(plot_file, height=6, width=7)
++   par(family="sans")
++ }
+> 
+> par(mar=c(5.5,7.5,3,1.5));
+> 
+> max_y = 0
+> if (plot_poisson) {
++ 	max_y = max(X$n, fit_p, fit_nb)
++ } else {
++ 	max_y = max(X$n, fit_nb)
++ }
+> 
+> plot(0:10, 0:10, type="n", lty="solid", ylim=c(0, max_y)*1.05, xlim=c(0, graph_end_i), lwd=1, xaxs="i", yaxs="i", axes=F, las=1, main="Coverage Distribution at Unique-Only Positions", xlab="Coverage depth (reads)", ylab="", cex.lab=1.2, cex.axis=1.2)
+> 
+> mtext(side = 2, text = "Number of reference positions", line = 5.5, cex=1.2)
+> 
+> sciNotation <- function(x, digits = 1) {
++     if (length(x) > 1) {
++         return(append(sciNotation(x[1]), sciNotation(x[-1])))     
++ 	} 
++     if (!x) return(0) 
++ 
++ 	exponent <- floor(log10(x)) 
++     base <- round(x / 10^exponent, digits)     
++ 	as.expression(substitute(base %*% 10^exponent, list(base = base, exponent = exponent))) 
++ }
+> 
+> #axis(2, cex.lab=1.2, las=1, cex.axis=1.2, labels=T, at=(0:6)*50000)
+> axis(2, cex.lab=1.2, las=1, cex.axis=1.2, at = axTicks(2), labels = sciNotation(axTicks(2), 1))
+> axis(1, cex.lab=1.2, cex.axis=1.2, labels=T)
+> box()
+> 
+> #graph the coverage as points
+> fit_data <- subset(X, (coverage>=start_i) & (coverage<=end_i) );
+> points(fit_data$coverage, fit_data$n, pch=my_pch, col=my_col, bg="white", cex=1.2)
+> 
+> #graph the censored coverage as red points
+> cat(start_i, " ", end_i, "\n", sep="")
+35 107
+> 
+> censored_data <- subset(X, (coverage<start_i) | (coverage>end_i) );
+> points(censored_data$coverage, censored_data$n, pch=my_pch, col=my_col_censored, bg="white", cex=1.2)
+> 
+> #graph the poisson fit IF REQUESTED
+> if (plot_poisson) {
++ 	lines(0:max(X$coverage), fit_p, lwd=3, lty="22", col="black");
++ }
+> 
+> #graph the negative binomial fit
+> if (nb_fit_mu > 0) {
++   lines(0:max(X$coverage), fit_nb, lwd=3, col="black");
++ }
+> 
+> if (plot_poisson) {
++ 	legend("topright", c("Coverage distribution", "Censored data", "Negative binomial", "Poisson"), lty=c("blank","blank","solid","22"), lwd=c(1,1,2,2), pch=c(my_pch, my_pch, -1, -1), col=c("black", "red", "black", "black"), bty="n")
++ } else {
++ 	legend("topright", c("Coverage distribution", "Censored data", "Negative binomial"), lty=c("blank","blank","solid"), lwd=c(1,1,2), pch=c(my_pch, my_pch, -1), col=c("black", "red", "black"), bty="n")
++ }
+> 
+> dev.off()
+null device 
+          1 
+> 
+> ## Fit the marginal value that we use for propagating deletions
+> 
+> if (nb_fit_mu > 0) {
++   cat(nb_fit_size, " ", nb_fit_mu, "\n")
++   deletion_propagation_coverage = suppressWarnings(qnbinom(deletion_propagation_pr_cutoff, size = nb_fit_size, mu = nb_fit_mu))
++ } else {
++   cat("Fallback to calculating off an estimate of just variance = mu + mu^2/size\n")
++   size_estimate = (1/(v-m))*(m*m)
++   cat("Mu estimate=", m," Size estimate =", size_estimate, "\n")
++   deletion_propagation_coverage = suppressWarnings(qnbinom(deletion_propagation_pr_cutoff, size = size_estimate, mu = m))
++   if (is.na(deletion_propagation_coverage) || is.nan(deletion_propagation_coverage) || (deletion_propagation_coverage < 1)) {
++     cat("Double fallback to calculating as just 10% of the mean\n")
++     deletion_propagation_coverage = m * 0.1
++   }
++ }
+41.10962   74.18857 
+> 
+> #Don't allow one read to indicate non-deleted regions
+> if (deletion_propagation_coverage < 1) {
++     deletion_propagation_coverage = 1
++ }
+> 
+> #This works fine with the negative values
+> #If we have both low fit coverage and low straight average coverage then we're deleted...
+> if ( (nb_fit_mu <= 3) && (m <= 3) ) {
++   deletion_propagation_coverage = -1
++ }
+> 
+> #print out statistics
+> 
+> print(nb_fit_size);
+[1] 41.10962
+> print(nb_fit_mu);
+[1] 74.18857
+> 
+> print(m)
+[1] 75.09456
+> print(v)
+[1] 260.6579
+> print(D)
+[1] 3.471063
+> 
+> print(deletion_propagation_coverage)
+[1] 35
+> 
+> warnings()
+> 

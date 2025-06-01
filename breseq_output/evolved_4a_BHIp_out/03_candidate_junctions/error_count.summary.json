@@ -1,0 +1,281 @@
+{
+  "NODE_10_length_72458_cov_10.303381": {
+    "no_pos_hash_per_position_pr": 0.920030559799972
+  },
+  "NODE_11_length_69729_cov_9.996167": {
+    "no_pos_hash_per_position_pr": 0.926047472821737
+  },
+  "NODE_12_length_63515_cov_10.009553": {
+    "no_pos_hash_per_position_pr": 0.922557992741045
+  },
+  "NODE_13_length_61789_cov_10.268327": {
+    "no_pos_hash_per_position_pr": 0.917149573137885
+  },
+  "NODE_14_length_56042_cov_10.119914": {
+    "no_pos_hash_per_position_pr": 0.924870278311985
+  },
+  "NODE_15_length_53643_cov_9.526995": {
+    "no_pos_hash_per_position_pr": 0.925372712898125
+  },
+  "NODE_16_length_53370_cov_9.797347": {
+    "no_pos_hash_per_position_pr": 0.923180159915317
+  },
+  "NODE_17_length_53225_cov_9.831847": {
+    "no_pos_hash_per_position_pr": 0.924654958444587
+  },
+  "NODE_18_length_51471_cov_10.179535": {
+    "no_pos_hash_per_position_pr": 0.919240205623491
+  },
+  "NODE_19_length_49564_cov_8.904581": {
+    "no_pos_hash_per_position_pr": 0.93014021082796
+  },
+  "NODE_1_length_330110_cov_10.162872": {
+    "no_pos_hash_per_position_pr": 0.918215771932711
+  },
+  "NODE_20_length_49433_cov_9.187150": {
+    "no_pos_hash_per_position_pr": 0.927287079181531
+  },
+  "NODE_21_length_47455_cov_9.245050": {
+    "no_pos_hash_per_position_pr": 0.931773404232782
+  },
+  "NODE_22_length_40668_cov_14.596117": {
+    "no_pos_hash_per_position_pr": 0.916934209226514
+  },
+  "NODE_23_length_38242_cov_8.817136": {
+    "no_pos_hash_per_position_pr": 0.933133496358234
+  },
+  "NODE_24_length_34935_cov_8.803632": {
+    "no_pos_hash_per_position_pr": 0.931619381941647
+  },
+  "NODE_25_length_34709_cov_10.348319": {
+    "no_pos_hash_per_position_pr": 0.911575330599988
+  },
+  "NODE_26_length_33102_cov_10.370235": {
+    "no_pos_hash_per_position_pr": 0.921229033334344
+  },
+  "NODE_27_length_30278_cov_10.777093": {
+    "no_pos_hash_per_position_pr": 0.91402428880386
+  },
+  "NODE_28_length_29500_cov_10.616457": {
+    "no_pos_hash_per_position_pr": 0.919672354483839
+  },
+  "NODE_29_length_29467_cov_11.077952": {
+    "no_pos_hash_per_position_pr": 0.919799589085535
+  },
+  "NODE_2_length_261439_cov_10.498405": {
+    "no_pos_hash_per_position_pr": 0.917237851268914
+  },
+  "NODE_30_length_22830_cov_8.619962": {
+    "no_pos_hash_per_position_pr": 0.935374771480804
+  },
+  "NODE_31_length_21151_cov_19.362247": {
+    "no_pos_hash_per_position_pr": 0.868494710375255
+  },
+  "NODE_32_length_21058_cov_9.534865": {
+    "no_pos_hash_per_position_pr": 0.928513616454009
+  },
+  "NODE_33_length_20817_cov_9.544696": {
+    "no_pos_hash_per_position_pr": 0.925094266653775
+  },
+  "NODE_34_length_20253_cov_10.329253": {
+    "no_pos_hash_per_position_pr": 0.921765320854284
+  },
+  "NODE_35_length_19845_cov_8.356081": {
+    "no_pos_hash_per_position_pr": 0.933628774605792
+  },
+  "NODE_36_length_19448_cov_8.601311": {
+    "no_pos_hash_per_position_pr": 0.931536667530448
+  },
+  "NODE_37_length_16637_cov_8.574034": {
+    "no_pos_hash_per_position_pr": 0.927794323223728
+  },
+  "NODE_38_length_12460_cov_8.761043": {
+    "no_pos_hash_per_position_pr": 0.928536684231861
+  },
+  "NODE_39_length_11996_cov_9.189362": {
+    "no_pos_hash_per_position_pr": 0.927886233591383
+  },
+  "NODE_3_length_214493_cov_9.287632": {
+    "no_pos_hash_per_position_pr": 0.928539983608477
+  },
+  "NODE_40_length_11190_cov_8.724647": {
+    "no_pos_hash_per_position_pr": 0.932708688245315
+  },
+  "NODE_41_length_6647_cov_20.989498": {
+    "no_pos_hash_per_position_pr": 0.853729514473886
+  },
+  "NODE_42_length_5861_cov_9.591286": {
+    "no_pos_hash_per_position_pr": 0.922635850388144
+  },
+  "NODE_43_length_5498_cov_10.083379": {
+    "no_pos_hash_per_position_pr": 0.928557485848136
+  },
+  "NODE_44_length_5066_cov_11.107035": {
+    "no_pos_hash_per_position_pr": 0.925925925925926
+  },
+  "NODE_45_length_4078_cov_9.272682": {
+    "no_pos_hash_per_position_pr": 0.929972684380432
+  },
+  "NODE_46_length_3496_cov_8.588184": {
+    "no_pos_hash_per_position_pr": 0.928156748911466
+  },
+  "NODE_47_length_3280_cov_8.366219": {
+    "no_pos_hash_per_position_pr": 0.937539732994278
+  },
+  "NODE_48_length_3090_cov_27.958181": {
+    "no_pos_hash_per_position_pr": 0.792513550135501
+  },
+  "NODE_49_length_2950_cov_9.320919": {
+    "no_pos_hash_per_position_pr": 0.929448929448929
+  },
+  "NODE_4_length_173229_cov_8.684428": {
+    "no_pos_hash_per_position_pr": 0.932667414068098
+  },
+  "NODE_50_length_2608_cov_9.088503": {
+    "no_pos_hash_per_position_pr": 0.937772397094431
+  },
+  "NODE_51_length_2519_cov_9.744062": {
+    "no_pos_hash_per_position_pr": 0.929857621440536
+  },
+  "NODE_52_length_2214_cov_9.255030": {
+    "no_pos_hash_per_position_pr": 0.934137757667169
+  },
+  "NODE_53_length_1882_cov_13.341274": {
+    "no_pos_hash_per_position_pr": 0.912550842533411
+  },
+  "NODE_54_length_1659_cov_29.332491": {
+    "no_pos_hash_per_position_pr": 0.806042884990253
+  },
+  "NODE_55_length_1501_cov_57.312500": {
+    "no_pos_hash_per_position_pr": 0.688961988304094
+  },
+  "NODE_56_length_1105_cov_8.202335": {
+    "no_pos_hash_per_position_pr": 0.93788501026694
+  },
+  "NODE_57_length_1007_cov_6.844086": {
+    "no_pos_hash_per_position_pr": 0.948918269230769
+  },
+  "NODE_58_length_824_cov_4.875502": {
+    "no_pos_hash_per_position_pr": 0.956676136363636
+  },
+  "NODE_59_length_708_cov_7.657686": {
+    "no_pos_hash_per_position_pr": 0.947635135135135
+  },
+  "NODE_5_length_154083_cov_9.025505": {
+    "no_pos_hash_per_position_pr": 0.930556820992073
+  },
+  "NODE_60_length_682_cov_6.588430": {
+    "no_pos_hash_per_position_pr": 0.938162544169611
+  },
+  "NODE_61_length_570_cov_15.713996": {
+    "no_pos_hash_per_position_pr": 0.886627906976744
+  },
+  "NODE_62_length_513_cov_23.066514": {
+    "no_pos_hash_per_position_pr": 0.858225108225108
+  },
+  "NODE_63_length_498_cov_23.161520": {
+    "no_pos_hash_per_position_pr": 0.865720524017467
+  },
+  "NODE_64_length_415_cov_7.426036": {
+    "no_pos_hash_per_position_pr": 0.96309963099631
+  },
+  "NODE_65_length_399_cov_20.484472": {
+    "no_pos_hash_per_position_pr": 0.891428571428571
+  },
+  "NODE_66_length_398_cov_9.713396": {
+    "no_pos_hash_per_position_pr": 0.938423645320197
+  },
+  "NODE_67_length_398_cov_6.834891": {
+    "no_pos_hash_per_position_pr": 0.955665024630542
+  },
+  "NODE_68_length_393_cov_3.363924": {
+    "no_pos_hash_per_position_pr": 0.960893854748603
+  },
+  "NODE_69_length_380_cov_15.752475": {
+    "no_pos_hash_per_position_pr": 0.936254980079681
+  },
+  "NODE_6_length_146689_cov_9.273306": {
+    "no_pos_hash_per_position_pr": 0.92931896015476
+  },
+  "NODE_70_length_375_cov_11.503356": {
+    "no_pos_hash_per_position_pr": 0.958490566037736
+  },
+  "NODE_71_length_375_cov_6.553691": {
+    "no_pos_hash_per_position_pr": 0.926415094339623
+  },
+  "NODE_72_length_372_cov_26.274576": {
+    "no_pos_hash_per_position_pr": 0.873983739837398
+  },
+  "NODE_73_length_329_cov_9.464286": {
+    "no_pos_hash_per_position_pr": 0.9375
+  },
+  "NODE_74_length_328_cov_17.721116": {
+    "no_pos_hash_per_position_pr": 0.919724770642202
+  },
+  "NODE_75_length_275_cov_18.767677": {
+    "no_pos_hash_per_position_pr": 0.890243902439024
+  },
+  "NODE_76_length_259_cov_6.115385": {
+    "no_pos_hash_per_position_pr": 0.984126984126984
+  },
+  "NODE_77_length_250_cov_8.606936": {
+    "no_pos_hash_per_position_pr": 0.969298245614035
+  },
+  "NODE_78_length_249_cov_9.645349": {
+    "no_pos_hash_per_position_pr": 0.975524475524476
+  },
+  "NODE_79_length_234_cov_19.955414": {
+    "no_pos_hash_per_position_pr": 0.937853107344633
+  },
+  "NODE_7_length_138722_cov_10.762458": {
+    "no_pos_hash_per_position_pr": 0.917318423639623
+  },
+  "NODE_80_length_230_cov_10.947712": {
+    "no_pos_hash_per_position_pr": 0.946428571428571
+  },
+  "NODE_81_length_227_cov_13.946667": {
+    "no_pos_hash_per_position_pr": 0.984848484848485
+  },
+  "NODE_82_length_209_cov_36.643939": {
+    "no_pos_hash_per_position_pr": 0.914473684210526
+  },
+  "NODE_83_length_194_cov_13.239316": {
+    "no_pos_hash_per_position_pr": 0.959459459459459
+  },
+  "NODE_84_length_174_cov_13.711340": {
+    "no_pos_hash_per_position_pr": 0.931818181818182
+  },
+  "NODE_85_length_163_cov_12.918605": {
+    "no_pos_hash_per_position_pr": 0.983333333333333
+  },
+  "NODE_86_length_159_cov_8.902439": {
+    "no_pos_hash_per_position_pr": 0.954545454545455
+  },
+  "NODE_87_length_156_cov_6.531646": {
+    "no_pos_hash_per_position_pr": 1.0
+  },
+  "NODE_88_length_150_cov_11.972603": {
+    "no_pos_hash_per_position_pr": 0.966666666666667
+  },
+  "NODE_89_length_144_cov_51.701493": {
+    "no_pos_hash_per_position_pr": 0.961538461538462
+  },
+  "NODE_8_length_120051_cov_11.113541": {
+    "no_pos_hash_per_position_pr": 0.911120946662547
+  },
+  "NODE_90_length_140_cov_11.396825": {
+    "no_pos_hash_per_position_pr": 1.0
+  },
+  "NODE_91_length_112_cov_14.342857": {
+    "no_pos_hash_per_position_pr": 0.875
+  },
+  "NODE_92_length_108_cov_33.548387": {
+    "no_pos_hash_per_position_pr": 1.0
+  },
+  "NODE_93_length_78_cov_124.000000": {
+    "no_pos_hash_per_position_pr": 1.0
+  },
+  "NODE_9_length_88928_cov_9.019752": {
+    "no_pos_hash_per_position_pr": 0.934629960509395
+  }
+}

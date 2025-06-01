@@ -1,0 +1,1545 @@
+
+R version 4.3.1 (2023-06-16) -- "Beagle Scouts"
+Copyright (C) 2023 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> ##
+> ##
+> ## AUTHORS
+> ##
+> ## Jeffrey E. Barrick <jeffrey.e.barrick@gmail.com>
+> ##
+> ## LICENSE AND COPYRIGHT
+> ##
+> ## Copyright (c) 2008-2010 Michigan State University
+> ## Copyright (c) 2011-2022 The University of Texas at Austin
+> ##
+> ## breseq is free software; you can redistribute it and/or modify it under the
+> ## terms the GNU General Public License as published by the Free Software
+> ## Foundation; either version 1, or (at your option) any later version.
+> ##
+> ##
+> 
+> ## Arguments:
+> ##   distribution_file=/path/to/input 
+> ##   plot_file=/path/to/output 
+> ##   deletion_propagation_pr_cutoff=float
+> ##   plot_poisson=0 or 1
+> ##   pdf_output=0 or 1
+> 
+> ## Returns these values printed out to output log
+> ## 
+> ##  1. print(nb_fit_size); # 0 if fit failed
+> ##  2. print(nb_fit_mu);   # 0 if fit failed
+> ##  3. print(m)q
+> ##  4. print(v)
+> ##  5. print(D)
+> ##  6. print(deletion_propagation_coverage)
+> ##     -1 if it was <1 after fitting (implying reference sequence is deleted)
+> ##
+> 
+> plot_poisson = 0;
+> pdf_output = 1;
+> 
+> this.print.level = 0
+> #this.print.level = 2
+> 
+> for (e in commandArgs(TRUE)) {
++   ta = strsplit(e,"=",fixed=TRUE)[[1]]
++   if(length(ta)>1) {
++     temp = ta[2]
++     assign(ta[1],temp)
++     cat("assigned ",ta[1]," the value of |",temp,"|\n")
++   } else {
++     assign(ta[[1]][1],TRUE)
++     cat("assigned ",ta[1]," the value of TRUE\n")
++   }
++ }
+assigned  distribution_file  the value of | 4a+_BHI_c50_out/07_error_calibration/81.unique_only_coverage_distribution.tab |
+assigned  plot_file  the value of | 4a+_BHI_c50_out/output/calibration/81.unique_coverage.pdf |
+assigned  deletion_propagation_pr_cutoff  the value of | 0.00345857 |
+> 
+> deletion_propagation_pr_cutoff = as.numeric(deletion_propagation_pr_cutoff);
+> 
+> ## initialize values to be filled in
+> nb_fit_mu = 0
+> nb_fit_size = 0
+> m = 0
+> v = 0
+> D = 0
+> deletion_propagation_coverage = -1
+> 
+> min_fraction_included_in_nb_fit = 0.01
+> 
+> #load data
+> X<-read.table(distribution_file, header=T)
+> 
+> #table might be empty
+> if (nrow(X) == 0)
++ {
++   #print out statistics
++   
++   print(nb_fit_size);
++   print(nb_fit_mu);
++   
++   print(m)
++   print(v)
++   print(D)
++   
++   print(deletion_propagation_coverage)
++   
++   q()
++ }
+> 
+> #create the distribution vector and fit
+> Y<-rep(X$coverage, X$n)
+> m<-mean(Y)
+> v<-var(Y)
+> D<-v/m
+> 
+> ###
+> ## Smooth the distribution with a moving average window of size 5
+> ## so that we can more reliably find it's maximum value
+> ###
+> 
+> ma5 = c(1, 1, 1, 1, 1)/5;
+> 
+> ## filtering fails if there are too few points
+> if (nrow(X) >= 5) {
++   X$ma = filter(X$n, ma5)
++ } else {
++ 	X$ma = X$n
++ }
+> 
+> i<-0
+> max_n <- 0;
+> min_i <- max( trunc(m/4), 1 ); #prevents zero for pathological distributions
+> max_i <- i;
+> for (i in min_i:length(X$ma))
++ {		
++   #cat(i, "\n")
++ 	if (!is.na(X$ma[i]) && (X$ma[i] > max_n))
++ 	{
++ 		max_n = X$ma[i];
++ 		max_i = i;
++ 	}
++ }
+> 
+> ##
+> # Censor data on the right and left of the maximum
+> ##
+> 
+> start_i = max(floor(max_i*0.5), 1);
+> end_i = min(ceiling(max_i*1.5), length(X$ma));
+> 
+> if (start_i == end_i)
++ {
++   print(nb_fit_size);
++   print(nb_fit_mu);
++   
++   print(m)
++   print(v)
++   print(D)
++   
++   print(deletion_propagation_coverage)
++   
++   q()
++ }
+> 
+> cat("Fitting from coverage of ", start_i, " to ", end_i, ".\n", sep="")
+Fitting from coverage of 37 to 78.
+> 
+> ##
+> # Coarse grain so that we are only fitting a number of bins that is 1000-2000
+> #
+> # The later adjustment for doing the fits this way is to multiply the means
+> # of the negative binomial and poisson distributions by the binning number.
+> # (The size parameter of the negative binomial doesn't need to be adjusted.)
+> ##
+> 
+> 
+> num_per_bin = trunc((end_i - start_i) / 1000)
+> 
+> if (num_per_bin > 1) 
++ {
++   cat("Coarse-graining for fits\n")
++   start_i_for_fits = trunc(start_i/num_per_bin)
++   end_i_for_fits = ceiling(end_i/num_per_bin)
++   num_bins = end_i - start_i  + 1
++   cat("Fitting from coverage in adjusted bins ", start_i_for_fits, " to ", end_i_for_fits, ".\n", sep="")
++   cat("Number of bins ", num_bins, ". Each bin has ", num_per_bin, " coverage values.\n", sep="")
++ 
++   # Create a new vector where we've added together values in bins
++   X.for.fits = vector("double", end_i_for_fits)
++   for (i in start_i_for_fits:end_i_for_fits)
++   {
++     for (j in 1:num_per_bin)
++     {
++       if (i*num_per_bin+j <= length(X$n))
++       {
++         X.for.fits[i] = X.for.fits[i] + X$n[i*num_per_bin+j]
++       }
++     }
++   }
++ 
++ } else {
++   ## AVOID num_per_bin equalling zero!!
++   X.for.fits = X$n[1:end_i]
++   num_per_bin = 1
++   start_i_for_fits = start_i
++   end_i_for_fits = end_i
++ }
+> 
+> 
+> ##
+> # Now perform negative binomial fitting to the censored data
+> ##
+> 
+> inner_total<-0;
+> for (i in start_i_for_fits:end_i_for_fits)
++ {
++ 	inner_total = inner_total + X.for.fits[i]; 
++ }
+> # Yes: it's correct to use X here because we want the overall total total
+> total_total<-sum(X$n);
+> 
+> ## let's preconstruct these for speed
+> dist = vector("double", end_i_for_fits)
+> 
+> f_nb <- function(par) {
++ 
++ 	mu = par[1];
++ 	size = par[2];
++ 
++   if ((mu <= 0) || (size <= 0))
++   {
++     return(0);
++   }
++   
++   cat(start_i_for_fits, " ", end_i_for_fits, "\n");
++   cat(mu, " ", size, "\n");
++   
++ 	dist<-c()
++ 	total <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{	
++ 		dist[i] <- dnbinom(i, size=size, mu=mu);
++ 		total <- total + dist[i] 
++ 	}
++ 	#print (mu, size)
++ 
++  	l <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{
++ 		l <- l + ((X.for.fits[i]/inner_total)-(dist[i]/total))^2;
++ 	}
++ 	return(l);
++ }
+> 
+> 
+> 
+> ## Fit negative binomial 
+> ## - allow fit to fail and set all params to zero/empty if that is the case
+> nb_fit = NULL
+> ## as.numeric prevents overflow in sums involving integers
+> mean_estimate = sum((as.numeric(1:end_i_for_fits)*as.numeric(X.for.fits)))/sum(as.numeric(X.for.fits))
+> 
+> nb_fit_mu = -1
+> nb_fit_size = -1
+> try_size = 100000
+> try_means_index = 1
+> #This is a list of different means to test <-  sometimes the actual mean doesn't lead to a fit
+> try_means = c(mean_estimate, 
++               end_i_for_fits, 
++               start_i_for_fits, 
++               1*(end_i_for_fits + start_i_for_fits)/4,
++               2*(end_i_for_fits + start_i_for_fits)/4,
++               3*(end_i_for_fits + start_i_for_fits)/4
++               )
+>               
+>               
+> nb_fit = c()
+> 
+> while ( ((nb_fit_mu < 0) || (nb_fit_size < 0) || (nb_fit$code != 1)) && (try_size > 0.001) && (try_means_index <= length(try_means)))
++ {
++   try_size = try_size / 10
++   try_mean = try_means[try_means_index]
++ 
++   ## SIZE ESTIMATE from the censored data can be negative, so try various values instead
++   cat("Try Mean: ", try_mean, " Size: ", try_size, "\n")
++ 
++   try( suppressWarnings(nb_fit<-nlm(f_nb, c(try_mean, try_size), iterlim=1000, print.level=this.print.level)) )
++ 
++   nb_fit_mu = nb_fit$estimate[1];
++   nb_fit_size = nb_fit$estimate[2];
++ 
++   cat("Fit Mean: ", nb_fit_mu, " Size: ", nb_fit_size, " Code: ", nb_fit$code, "\n")
++   
++   if (try_size <= 0.001) {
++     try_size = 100000
++     try_means_index = try_means_index + 1
++   }
++ }
+Try Mean:  58.06579  Size:  10000 
+37   78 
+58.06579   10000 
+37   78 
+58.06579   10000 
+37   78 
+58.06585   10000 
+37   78 
+58.06579   10000.01 
+37   78 
+58.07057   10000 
+37   78 
+58.07063   10000 
+37   78 
+58.07057   10000.01 
+37   78 
+58.07535   10000 
+37   78 
+58.07541   10000 
+37   78 
+58.07535   10000.01 
+37   78 
+58.08014   10000 
+37   78 
+58.08019   10000 
+37   78 
+58.08014   10000.01 
+37   78 
+58.08492   10000 
+37   78 
+58.08498   10000 
+37   78 
+58.08492   10000.01 
+37   78 
+58.0897   10000 
+37   78 
+58.08976   10000 
+37   78 
+58.0897   10000.01 
+37   78 
+58.09448   10000 
+37   78 
+58.09454   10000 
+37   78 
+58.09448   10000.01 
+37   78 
+58.09926   10000 
+37   78 
+58.09932   10000 
+37   78 
+58.09926   10000.01 
+37   78 
+58.10405   10000 
+37   78 
+58.1041   10000 
+37   78 
+58.10405   10000.01 
+37   78 
+58.10883   10000 
+37   78 
+58.10889   10000 
+37   78 
+58.10883   10000.01 
+37   78 
+58.11361   10000 
+37   78 
+58.11367   10000 
+37   78 
+58.11361   10000.01 
+37   78 
+58.11839   10000 
+37   78 
+58.11845   10000 
+37   78 
+58.11839   10000.01 
+37   78 
+58.12318   10000 
+37   78 
+58.12324   10000 
+37   78 
+58.12318   10000.01 
+37   78 
+58.12796   10000 
+37   78 
+58.12802   10000 
+37   78 
+58.12796   10000.01 
+37   78 
+58.13274   10000 
+37   78 
+58.1328   10000 
+37   78 
+58.13274   10000.01 
+37   78 
+58.13753   10000 
+37   78 
+58.13758   10000 
+37   78 
+58.13753   10000.01 
+37   78 
+58.14231   10000 
+37   78 
+58.14237   10000 
+37   78 
+58.14231   10000.01 
+37   78 
+58.14709   10000 
+37   78 
+58.14715   10000 
+37   78 
+58.14709   10000.01 
+37   78 
+58.15187   10000 
+37   78 
+58.15193   10000 
+37   78 
+58.15187   10000.01 
+37   78 
+58.15666   10000 
+37   78 
+58.15671   10000 
+37   78 
+58.15666   10000.01 
+37   78 
+58.16144   10000 
+37   78 
+58.1615   10000 
+37   78 
+58.16144   10000.01 
+37   78 
+58.16622   10000 
+37   78 
+58.16628   10000 
+37   78 
+58.16622   10000.01 
+37   78 
+58.17101   10000 
+37   78 
+58.17106   10000 
+37   78 
+58.17101   10000.01 
+37   78 
+58.17579   10000 
+37   78 
+58.17585   10000 
+37   78 
+58.17579   10000.01 
+37   78 
+58.18057   10000 
+37   78 
+58.18063   10000 
+37   78 
+58.18057   10000.01 
+37   78 
+58.18536   10000 
+37   78 
+58.18541   10000 
+37   78 
+58.18536   10000.01 
+37   78 
+58.19014   10000 
+37   78 
+58.1902   10000 
+37   78 
+58.19014   10000.01 
+37   78 
+58.19492   10000 
+37   78 
+58.19498   10000 
+37   78 
+58.19492   10000.01 
+37   78 
+58.19971   10000 
+37   78 
+58.19976   10000 
+37   78 
+58.19971   10000.01 
+37   78 
+58.20449   10000 
+37   78 
+58.20455   10000 
+37   78 
+58.20449   10000.01 
+37   78 
+58.20927   10000 
+37   78 
+58.20933   10000 
+37   78 
+58.20927   10000.01 
+37   78 
+58.21406   10000 
+37   78 
+58.21411   10000 
+37   78 
+58.21406   10000.01 
+37   78 
+58.21884   10000 
+37   78 
+58.2189   10000 
+37   78 
+58.21884   10000.01 
+37   78 
+58.22362   10000 
+37   78 
+58.22368   10000 
+37   78 
+58.22362   10000.01 
+37   78 
+58.22841   10000 
+37   78 
+58.22846   10000 
+37   78 
+58.22841   10000.01 
+37   78 
+58.23319   10000 
+37   78 
+58.23325   10000 
+37   78 
+58.23319   10000.01 
+37   78 
+58.23797   10000 
+37   78 
+58.23803   10000 
+37   78 
+58.23797   10000.01 
+37   78 
+58.24276   10000 
+37   78 
+58.24281   10000 
+37   78 
+58.24276   10000.01 
+37   78 
+58.24754   10000 
+37   78 
+58.2476   10000 
+37   78 
+58.24754   10000.01 
+37   78 
+58.25232   10000 
+37   78 
+58.25238   10000 
+37   78 
+58.25232   10000.01 
+37   78 
+58.25711   10000 
+37   78 
+58.25716   10000 
+37   78 
+58.25711   10000.01 
+37   78 
+58.26189   10000 
+37   78 
+58.26195   10000 
+37   78 
+58.26189   10000.01 
+37   78 
+58.26667   10000 
+37   78 
+58.26673   10000 
+37   78 
+58.26667   10000.01 
+37   78 
+58.27146   10000 
+37   78 
+58.27152   10000 
+37   78 
+58.27146   10000.01 
+37   78 
+58.27624   10000 
+37   78 
+58.2763   10000 
+37   78 
+58.27624   10000.01 
+37   78 
+58.28102   10000 
+37   78 
+58.28108   10000 
+37   78 
+58.28102   10000.01 
+37   78 
+20957.01   9999.954 
+37   78 
+2148.154   9999.995 
+37   78 
+267.2683   10000 
+37   78 
+162.3686   10000 
+37   78 
+88.479   10000 
+37   78 
+88.47909   10000 
+37   78 
+88.479   10000.01 
+37   78 
+80.35954   10000 
+37   78 
+80.35962   10000 
+37   78 
+80.35954   10000.01 
+37   78 
+75.38257   10000 
+37   78 
+75.38264   10000 
+37   78 
+75.38257   10000.01 
+37   78 
+76.93558   10000 
+37   78 
+76.93565   10000 
+37   78 
+76.93558   10000.01 
+37   78 
+76.78336   10000 
+37   78 
+76.78343   10000 
+37   78 
+76.78336   10000.01 
+37   78 
+76.77632   10000 
+37   78 
+76.7764   10000 
+37   78 
+76.77632   10000.01 
+37   78 
+76.77636   10000 
+37   78 
+76.77644   10000 
+37   78 
+76.77636   10000.01 
+Fit Mean:  76.77636  Size:  10000  Code:  2 
+Try Mean:  58.06579  Size:  1000 
+37   78 
+58.06579   1000 
+37   78 
+58.06579   1000 
+37   78 
+58.06585   1000 
+37   78 
+58.06579   1000.001 
+37   78 
+58.07046   1000 
+37   78 
+58.07052   1000 
+37   78 
+58.07046   1000.001 
+37   78 
+58.07513   1000 
+37   78 
+58.07519   1000 
+37   78 
+58.07513   1000.001 
+37   78 
+58.0798   1000 
+37   78 
+58.07986   1000 
+37   78 
+58.0798   1000.001 
+37   78 
+58.08448   1000 
+37   78 
+58.08453   1000 
+37   78 
+58.08448   1000.001 
+37   78 
+58.08915   1000 
+37   78 
+58.08921   1000 
+37   78 
+58.08915   1000.001 
+37   78 
+58.09382   1000 
+37   78 
+58.09388   1000 
+37   78 
+58.09382   1000.001 
+37   78 
+58.09849   1000 
+37   78 
+58.09855   1000 
+37   78 
+58.09849   1000.001 
+37   78 
+58.10316   1000 
+37   78 
+58.10322   1000 
+37   78 
+58.10316   1000.001 
+37   78 
+58.10783   1000 
+37   78 
+58.10789   1000 
+37   78 
+58.10783   1000.001 
+37   78 
+58.11251   1000 
+37   78 
+58.11256   1000 
+37   78 
+58.11251   1000.001 
+37   78 
+58.11718   1000 
+37   78 
+58.11724   1000 
+37   78 
+58.11718   1000.001 
+37   78 
+58.12185   1000 
+37   78 
+58.12191   1000 
+37   78 
+58.12185   1000.001 
+37   78 
+58.12652   1000 
+37   78 
+58.12658   1000 
+37   78 
+58.12652   1000.001 
+37   78 
+58.13119   1000 
+37   78 
+58.13125   1000 
+37   78 
+58.13119   1000.001 
+37   78 
+58.13586   1000 
+37   78 
+58.13592   1000 
+37   78 
+58.13586   1000.001 
+37   78 
+184263.7   961.4222 
+37   78 
+18478.69   996.1422 
+37   78 
+1900.191   999.6142 
+37   78 
+242.3414   999.9614 
+37   78 
+150.207   999.9807 
+37   78 
+87.20535   999.9939 
+37   78 
+87.20543   999.9939 
+37   78 
+87.20535   999.9949 
+37   78 
+80.48817   999.9953 
+37   78 
+80.48825   999.9953 
+37   78 
+80.48817   999.9963 
+37   78 
+76.0047   999.9962 
+37   78 
+76.00477   999.9962 
+37   78 
+76.0047   999.9972 
+37   78 
+77.35406   999.996 
+37   78 
+77.35414   999.996 
+37   78 
+77.35406   999.997 
+37   78 
+77.22207   999.996 
+37   78 
+77.22214   999.996 
+37   78 
+77.22207   999.997 
+37   78 
+77.21638   999.996 
+37   78 
+77.21646   999.996 
+37   78 
+77.21638   999.997 
+37   78 
+77.21641   999.996 
+37   78 
+77.21648   999.996 
+37   78 
+77.21641   999.997 
+Fit Mean:  77.21641  Size:  999.996  Code:  2 
+Try Mean:  58.06579  Size:  100 
+37   78 
+58.06579   100 
+37   78 
+58.06579   100 
+37   78 
+58.06585   100 
+37   78 
+58.06579   100.0001 
+37   78 
+58.0696   99.99996 
+37   78 
+58.06966   99.99996 
+37   78 
+58.0696   100.0001 
+37   78 
+121.4982   106.4705 
+37   78 
+121.4983   106.4705 
+37   78 
+121.4982   106.4706 
+37   78 
+108.2855   101.0542 
+37   78 
+108.2856   101.0542 
+37   78 
+108.2855   101.0543 
+37   78 
+6.356204   68.57549 
+37   78 
+98.09253   97.8063 
+37   78 
+98.09263   97.8063 
+37   78 
+98.09253   97.8064 
+37   78 
+57.87392   87.98848 
+37   78 
+89.12674   95.61765 
+37   78 
+89.12683   95.61765 
+37   78 
+89.12674   95.61774 
+37   78 
+77.84945   93.29921 
+37   78 
+77.84952   93.29921 
+37   78 
+77.84945   93.2993 
+37   78 
+84.11199   94.17651 
+37   78 
+84.11207   94.17651 
+37   78 
+84.11199   94.1766 
+37   78 
+83.13704   93.77218 
+37   78 
+83.13712   93.77218 
+37   78 
+83.13704   93.77228 
+37   78 
+82.87719   93.41757 
+37   78 
+82.87728   93.41757 
+37   78 
+82.87719   93.41767 
+37   78 
+82.77168   92.84992 
+37   78 
+82.77176   92.84992 
+37   78 
+82.77168   92.85001 
+37   78 
+82.53877   89.21466 
+37   78 
+82.53885   89.21466 
+37   78 
+82.53877   89.21475 
+37   78 
+82.52956   80.61994 
+37   78 
+82.52964   80.61994 
+37   78 
+82.52956   80.62002 
+37   78 
+83.21572   63.95563 
+37   78 
+83.2158   63.95563 
+37   78 
+83.21572   63.9557 
+37   78 
+84.06831   61.50489 
+37   78 
+84.06839   61.50489 
+37   78 
+84.06831   61.50496 
+37   78 
+89.26743   39.55833 
+37   78 
+89.26752   39.55833 
+37   78 
+89.26743   39.55837 
+37   78 
+95.54916   46.36454 
+37   78 
+92.31103   42.85604 
+37   78 
+92.31112   42.85604 
+37   78 
+92.31103   42.85609 
+37   78 
+96.4373   33.75136 
+37   78 
+96.43739   33.75136 
+37   78 
+96.4373   33.7514 
+37   78 
+102.6833   24.33498 
+37   78 
+98.30279   30.93897 
+37   78 
+98.30289   30.93897 
+37   78 
+98.30279   30.939 
+37   78 
+102.7509   27.49427 
+37   78 
+102.751   27.49427 
+37   78 
+102.7509   27.49429 
+37   78 
+108.0013   25.8737 
+37   78 
+108.0014   25.8737 
+37   78 
+108.0013   25.87373 
+37   78 
+119.1063   18.74518 
+37   78 
+111.5627   23.58757 
+37   78 
+111.5628   23.58757 
+37   78 
+111.5627   23.58759 
+37   78 
+120.5618   19.42496 
+37   78 
+120.562   19.42496 
+37   78 
+120.5618   19.42498 
+37   78 
+119.3187   21.15192 
+37   78 
+119.3188   21.15192 
+37   78 
+119.3187   21.15194 
+37   78 
+123.4596   20.14766 
+37   78 
+123.4597   20.14766 
+37   78 
+123.4596   20.14768 
+37   78 
+140.4889   15.7059 
+37   78 
+130.2078   18.38753 
+37   78 
+130.2079   18.38753 
+37   78 
+130.2078   18.38755 
+37   78 
+139.976   16.51111 
+37   78 
+139.9761   16.51111 
+37   78 
+139.976   16.51112 
+37   78 
+144.0428   16.49225 
+37   78 
+144.0429   16.49225 
+37   78 
+144.0428   16.49227 
+37   78 
+155.6332   15.20279 
+37   78 
+155.6333   15.20279 
+37   78 
+155.6332   15.2028 
+37   78 
+168.4731   14.15395 
+37   78 
+168.4733   14.15395 
+37   78 
+168.4731   14.15397 
+37   78 
+180.6648   13.73474 
+37   78 
+180.665   13.73474 
+37   78 
+180.6648   13.73475 
+37   78 
+208.477   12.00902 
+37   78 
+191.1775   13.08244 
+37   78 
+191.1776   13.08244 
+37   78 
+191.1775   13.08245 
+37   78 
+208.6562   12.25846 
+37   78 
+208.6564   12.25846 
+37   78 
+208.6562   12.25847 
+37   78 
+211.2523   12.35116 
+37   78 
+211.2525   12.35116 
+37   78 
+211.2523   12.35117 
+37   78 
+228.2323   11.92494 
+37   78 
+228.2325   11.92494 
+37   78 
+228.2323   11.92495 
+37   78 
+256.8229   11.17499 
+37   78 
+256.8232   11.17499 
+37   78 
+256.8229   11.17501 
+37   78 
+262.955   11.21736 
+37   78 
+262.9552   11.21736 
+37   78 
+262.955   11.21737 
+37   78 
+291.2452   10.78334 
+37   78 
+291.2455   10.78334 
+37   78 
+291.2452   10.78335 
+37   78 
+325.0306   10.37082 
+37   78 
+325.0309   10.37082 
+37   78 
+325.0306   10.37083 
+37   78 
+350.6079   10.23804 
+37   78 
+350.6083   10.23804 
+37   78 
+350.6079   10.23805 
+37   78 
+404.2926   9.78159 
+37   78 
+404.293   9.78159 
+37   78 
+404.2926   9.7816 
+37   78 
+406.8926   9.868692 
+37   78 
+406.893   9.868692 
+37   78 
+406.8926   9.868702 
+37   78 
+445.4115   9.690042 
+37   78 
+445.4119   9.690042 
+37   78 
+445.4115   9.690052 
+37   78 
+530.9134   9.298607 
+37   78 
+530.9139   9.298607 
+37   78 
+530.9134   9.298616 
+37   78 
+525.5665   9.407074 
+37   78 
+525.5671   9.407074 
+37   78 
+525.5665   9.407084 
+37   78 
+570.052   9.294161 
+37   78 
+570.0525   9.294161 
+37   78 
+570.052   9.29417 
+37   78 
+705.9106   8.943841 
+37   78 
+705.9113   8.943841 
+37   78 
+705.9106   8.94385 
+37   78 
+673.9836   9.086693 
+37   78 
+673.9843   9.086693 
+37   78 
+673.9836   9.086702 
+37   78 
+722.3065   9.012643 
+37   78 
+722.3072   9.012643 
+37   78 
+722.3065   9.012652 
+37   78 
+918.9414   8.720947 
+37   78 
+918.9423   8.720947 
+37   78 
+918.9414   8.720956 
+37   78 
+870.1762   8.842405 
+37   78 
+870.177   8.842405 
+37   78 
+870.1762   8.842414 
+37   78 
+934.6983   8.786257 
+37   78 
+934.6992   8.786257 
+37   78 
+934.6983   8.786266 
+37   78 
+1197.369   8.566401 
+37   78 
+1197.37   8.566401 
+37   78 
+1197.369   8.56641 
+37   78 
+1159.707   8.640363 
+37   78 
+1159.708   8.640363 
+37   78 
+1159.707   8.640371 
+37   78 
+1261.292   8.597837 
+37   78 
+1261.293   8.597837 
+37   78 
+1261.292   8.597846 
+37   78 
+1613.56   8.4415 
+37   78 
+1613.562   8.4415 
+37   78 
+1613.56   8.441509 
+37   78 
+1622.708   8.474015 
+37   78 
+1622.71   8.474015 
+37   78 
+1622.708   8.474023 
+37   78 
+1834.89   8.43454 
+37   78 
+1834.892   8.43454 
+37   78 
+1834.89   8.434548 
+37   78 
+2301.715   8.338371 
+37   78 
+2301.717   8.338371 
+37   78 
+2301.715   8.338379 
+37   78 
+2461.188   8.336641 
+37   78 
+2461.19   8.336641 
+37   78 
+2461.188   8.33665 
+37   78 
+2993.99   8.289229 
+37   78 
+2993.993   8.289229 
+37   78 
+2993.99   8.289237 
+37   78 
+3479.942   8.270587 
+37   78 
+3479.946   8.270587 
+37   78 
+3479.942   8.270595 
+37   78 
+4349.751   8.21984 
+37   78 
+4349.756   8.21984 
+37   78 
+4349.751   8.219848 
+37   78 
+5001.831   8.215221 
+37   78 
+5001.836   8.215221 
+37   78 
+5001.831   8.215229 
+37   78 
+6141.312   8.188396 
+37   78 
+6141.318   8.188396 
+37   78 
+6141.312   8.188404 
+37   78 
+7447.949   8.17673 
+37   78 
+7447.957   8.17673 
+37   78 
+7447.949   8.176739 
+37   78 
+9193.727   8.158414 
+37   78 
+9193.736   8.158414 
+37   78 
+9193.727   8.158423 
+37   78 
+11472.72   8.15232 
+37   78 
+11472.74   8.15232 
+37   78 
+11472.72   8.152329 
+37   78 
+14849.41   8.13157 
+37   78 
+14849.42   8.13157 
+37   78 
+14849.41   8.131578 
+37   78 
+17718.7   8.130199 
+37   78 
+17718.72   8.130199 
+37   78 
+17718.7   8.130207 
+37   78 
+22218.48   8.124585 
+37   78 
+22218.51   8.124585 
+37   78 
+22218.48   8.124593 
+37   78 
+28046.11   8.120189 
+37   78 
+28046.14   8.120189 
+37   78 
+28046.11   8.120197 
+37   78 
+35917.65   8.115636 
+37   78 
+35917.69   8.115636 
+37   78 
+35917.65   8.115644 
+37   78 
+46192.26   8.113388 
+37   78 
+46192.3   8.113388 
+37   78 
+46192.26   8.113396 
+37   78 
+60408.28   8.108554 
+37   78 
+60408.34   8.108554 
+37   78 
+60408.28   8.108562 
+37   78 
+79663.62   8.109636 
+37   78 
+79663.7   8.109636 
+37   78 
+79663.62   8.109644 
+37   78 
+106019.5   8.104961 
+37   78 
+106019.6   8.104961 
+37   78 
+106019.5   8.104969 
+37   78 
+135100.8   8.10427 
+37   78 
+135100.9   8.10427 
+37   78 
+135100.8   8.104278 
+37   78 
+176148.9   8.104106 
+37   78 
+176149.1   8.104106 
+37   78 
+176148.9   8.104114 
+37   78 
+230448.2   8.103454 
+37   78 
+230448.4   8.103454 
+37   78 
+230448.2   8.103462 
+37   78 
+302788.8   8.102959 
+37   78 
+302789.1   8.102959 
+37   78 
+302788.8   8.102968 
+37   78 
+404274.3   8.102539 
+37   78 
+404274.7   8.102539 
+37   78 
+404274.3   8.102547 
+37   78 
+519910.1   8.102325 
+37   78 
+519910.6   8.102325 
+37   78 
+519910.1   8.102333 
+37   78 
+635545.9   8.102167 
+37   78 
+635546.5   8.102167 
+37   78 
+635545.9   8.102175 
+37   78 
+751181.7   8.102054 
+37   78 
+751182.4   8.102054 
+37   78 
+751181.7   8.102062 
+Fit Mean:  751181.7  Size:  8.102054  Code:  1 
+> 
+> cat("Final Fit Mean: ", nb_fit_mu, " Size: ", nb_fit_size, " Code: ", nb_fit$code, " Try Size: ", try_size, "\n")
+Final Fit Mean:  751181.7  Size:  8.102054  Code:  1  Try Size:  100 
+> 
+> ## Fit failed = reset parameters so graphing and output code can recognize this
+> if ((nb_fit_mu < 0) || (nb_fit_size < 0) || (nb_fit$code != 1))
++ {
++   nb_fit_mu = 0
++   nb_fit_size = 0
++ }
+> 
+> 
+> ## things can go wrong with fitting and we can still end up with invalid values
+> 
+> fit_nb = c()
+> included_fract = 0
+> if (nb_fit_mu > 0)
++ {
++   end_fract = pnbinom(end_i_for_fits, mu = nb_fit_mu, size=nb_fit_size)
++   start_fract = pnbinom(start_i_for_fits, mu = nb_fit_mu, size=nb_fit_size)
++   included_fract = end_fract-start_fract;
++ 
++   if (included_fract >= 0.01) {
++ 
++     ## Adjust so that we are back in full coords before making fit!!
++     if (num_per_bin > 1) 
++     {
++       nb_fit_mu = nb_fit_mu * num_per_bin
++     }
++     fit_nb = dnbinom(0:max(X$coverage), mu = nb_fit_mu, size=nb_fit_size)*inner_total/included_fract;
++   }
++ }
+> 
+> ## If an insufficient amount of fit was included, then invalidate it
+> if (included_fract < 0.01)
++ {
++   nb_fit_mu = 0
++   nb_fit_size = 0
++ }
+> 
+> f_p <- function(par) {
++ 
++   lambda = par[1];
++ 
++   if (lambda <= 0)
++   {
++     return(0);
++   }
++   
++ 	total <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{	
++     #cat(i, " ", lambda, "\n");
++ 		dist[i] <- dpois(i, lambda=lambda);
++ 		total <- total + dist[i] 
++ 	}
++ 	#print (total)
++ 
++  	l <- 0;
++ 	for (i in start_i_for_fits:end_i_for_fits)
++ 	{
++ 		l <- l + ((X.for.fits[i]/inner_total)-(dist[i]/total))^2;
++ 	}
++ 	return(l);
++ }
+> 
+> 
+> ## Fit Poisson 
+> ## - allow fit to fail and set all params to zero/empty if that is the case
+> 
+> p_fit = NULL
+> try(suppressWarnings(p_fit<-nlm(f_p, c(m), print.level=this.print.level)))
+> 
+> fit_p = c()
+> if (!is.null(p_fit) && (p_fit$estimate[1] > 0))
++ {
++   #print (nb_fit$estimate[1])
++   p_fit_lambda = p_fit$estimate[1];
++   #print(0:max(X$coverage))
++ 
++   end_fract = ppois(end_i_for_fits, lambda = p_fit_lambda)
++   start_fract = ppois(start_i_for_fits, lambda = p_fit_lambda)
++   included_fract = end_fract-start_fract;
++ 
++   ## Adjust so that we are back in full coords before making fit!!
++   if (num_per_bin > 1) 
++   {
++     p_fit_lambda = p_fit_lambda * num_per_bin
++   }
++   fit_p<-dpois(0:max(X$coverage), lambda = p_fit_lambda)*inner_total/included_fract;
++ }
+> 
+> 
+> ## Graphing
+> ##
+> ## don't graph very high values with very little coverage
+> i<-max_i
+> while (i <= length(X$n) && X$n[i]>0.01*max_n)
++ {		
++ 	i <- i+1;
++ }
+> graph_end_i <-i
+> 
+> ## Ths leaves enough room to the right of the peak for the legend
+> graph_end_i = max(floor(2.2 * max_i), graph_end_i);
+> 
+> ## graphics settings
+> my_pch = 21
+> my_col = "black";
+> my_col_censored = "red";
+> 
+> if (pdf_output == 0) {
++   
++   ## bitmap() requires ghostscript to be installed.
++   ## taa=4, gaa=2 options NOT compatible with earlier R versions!
++   ## units = "px" NOT compatible with even earlier R versions!
++   
++   if(!capabilities(what = "png"))
++   {
++     ## fallback to ghostscript
++     bitmap(plot_file, height=6, width=7, type = "png16m", res = 72, pointsize=18)
++   } else {
++     ## use X11 function, which gives better resolution
++     png(plot_file, height=6, width=7, units ="in", res = 72, pointsize=18)
++     par(family="sans")
++   }
++ } else {
++   pdf(plot_file, height=6, width=7)
++   par(family="sans")
++ }
+> 
+> par(mar=c(5.5,7.5,3,1.5));
+> 
+> max_y = 0
+> if (plot_poisson) {
++ 	max_y = max(X$n, fit_p, fit_nb)
++ } else {
++ 	max_y = max(X$n, fit_nb)
++ }
+> 
+> plot(0:10, 0:10, type="n", lty="solid", ylim=c(0, max_y)*1.05, xlim=c(0, graph_end_i), lwd=1, xaxs="i", yaxs="i", axes=F, las=1, main="Coverage Distribution at Unique-Only Positions", xlab="Coverage depth (reads)", ylab="", cex.lab=1.2, cex.axis=1.2)
+> 
+> mtext(side = 2, text = "Number of reference positions", line = 5.5, cex=1.2)
+> 
+> sciNotation <- function(x, digits = 1) {
++     if (length(x) > 1) {
++         return(append(sciNotation(x[1]), sciNotation(x[-1])))     
++ 	} 
++     if (!x) return(0) 
++ 
++ 	exponent <- floor(log10(x)) 
++     base <- round(x / 10^exponent, digits)     
++ 	as.expression(substitute(base %*% 10^exponent, list(base = base, exponent = exponent))) 
++ }
+> 
+> #axis(2, cex.lab=1.2, las=1, cex.axis=1.2, labels=T, at=(0:6)*50000)
+> axis(2, cex.lab=1.2, las=1, cex.axis=1.2, at = axTicks(2), labels = sciNotation(axTicks(2), 1))
+> axis(1, cex.lab=1.2, cex.axis=1.2, labels=T)
+> box()
+> 
+> #graph the coverage as points
+> fit_data <- subset(X, (coverage>=start_i) & (coverage<=end_i) );
+> points(fit_data$coverage, fit_data$n, pch=my_pch, col=my_col, bg="white", cex=1.2)
+> 
+> #graph the censored coverage as red points
+> cat(start_i, " ", end_i, "\n", sep="")
+37 78
+> 
+> censored_data <- subset(X, (coverage<start_i) | (coverage>end_i) );
+> points(censored_data$coverage, censored_data$n, pch=my_pch, col=my_col_censored, bg="white", cex=1.2)
+> 
+> #graph the poisson fit IF REQUESTED
+> if (plot_poisson) {
++ 	lines(0:max(X$coverage), fit_p, lwd=3, lty="22", col="black");
++ }
+> 
+> #graph the negative binomial fit
+> if (nb_fit_mu > 0) {
++   lines(0:max(X$coverage), fit_nb, lwd=3, col="black");
++ }
+> 
+> if (plot_poisson) {
++ 	legend("topright", c("Coverage distribution", "Censored data", "Negative binomial", "Poisson"), lty=c("blank","blank","solid","22"), lwd=c(1,1,2,2), pch=c(my_pch, my_pch, -1, -1), col=c("black", "red", "black", "black"), bty="n")
++ } else {
++ 	legend("topright", c("Coverage distribution", "Censored data", "Negative binomial"), lty=c("blank","blank","solid"), lwd=c(1,1,2), pch=c(my_pch, my_pch, -1), col=c("black", "red", "black"), bty="n")
++ }
+> 
+> dev.off()
+null device 
+          1 
+> 
+> ## Fit the marginal value that we use for propagating deletions
+> 
+> if (nb_fit_mu > 0) {
++   cat(nb_fit_size, " ", nb_fit_mu, "\n")
++   deletion_propagation_coverage = suppressWarnings(qnbinom(deletion_propagation_pr_cutoff, size = nb_fit_size, mu = nb_fit_mu))
++ } else {
++   cat("Fallback to calculating off an estimate of just variance = mu + mu^2/size\n")
++   size_estimate = (1/(v-m))*(m*m)
++   cat("Mu estimate=", m," Size estimate =", size_estimate, "\n")
++   deletion_propagation_coverage = suppressWarnings(qnbinom(deletion_propagation_pr_cutoff, size = size_estimate, mu = m))
++   if (is.na(deletion_propagation_coverage) || is.nan(deletion_propagation_coverage) || (deletion_propagation_coverage < 1)) {
++     cat("Double fallback to calculating as just 10% of the mean\n")
++     deletion_propagation_coverage = m * 0.1
++   }
++ }
+Fallback to calculating off an estimate of just variance = mu + mu^2/size
+Mu estimate= 58.06579  Size estimate = 5.786066 
+> 
+> #Don't allow one read to indicate non-deleted regions
+> if (deletion_propagation_coverage < 1) {
++     deletion_propagation_coverage = 1
++ }
+> 
+> #This works fine with the negative values
+> #If we have both low fit coverage and low straight average coverage then we're deleted...
+> if ( (nb_fit_mu <= 3) && (m <= 3) ) {
++   deletion_propagation_coverage = -1
++ }
+> 
+> #print out statistics
+> 
+> print(nb_fit_size);
+[1] 0
+> print(nb_fit_mu);
+[1] 0
+> 
+> print(m)
+[1] 58.06579
+> print(v)
+[1] 640.7823
+> print(D)
+[1] 11.03545
+> 
+> print(deletion_propagation_coverage)
+[1] 11
+> 
+> warnings()
+> 

@@ -1,0 +1,117 @@
+##fileformat=VCFv4.1
+##fileDate
+##source=breseq_GD2VCF_converterter
+##contig=<ID=NODE_1_length_330110_cov_10.162872,length=330110>
+##contig=<ID=NODE_2_length_261439_cov_10.498405,length=261439>
+##contig=<ID=NODE_3_length_214493_cov_9.287632,length=214493>
+##contig=<ID=NODE_4_length_173229_cov_8.684428,length=173229>
+##contig=<ID=NODE_5_length_154083_cov_9.025505,length=154083>
+##contig=<ID=NODE_6_length_146689_cov_9.273306,length=146689>
+##contig=<ID=NODE_7_length_138722_cov_10.762458,length=138722>
+##contig=<ID=NODE_8_length_120051_cov_11.113541,length=120051>
+##contig=<ID=NODE_9_length_88928_cov_9.019752,length=88928>
+##contig=<ID=NODE_10_length_72458_cov_10.303381,length=72458>
+##contig=<ID=NODE_11_length_69729_cov_9.996167,length=69729>
+##contig=<ID=NODE_12_length_63515_cov_10.009553,length=63515>
+##contig=<ID=NODE_13_length_61789_cov_10.268327,length=61789>
+##contig=<ID=NODE_14_length_56042_cov_10.119914,length=56042>
+##contig=<ID=NODE_15_length_53643_cov_9.526995,length=53643>
+##contig=<ID=NODE_16_length_53370_cov_9.797347,length=53370>
+##contig=<ID=NODE_17_length_53225_cov_9.831847,length=53225>
+##contig=<ID=NODE_18_length_51471_cov_10.179535,length=51471>
+##contig=<ID=NODE_19_length_49564_cov_8.904581,length=49564>
+##contig=<ID=NODE_20_length_49433_cov_9.187150,length=49433>
+##contig=<ID=NODE_21_length_47455_cov_9.245050,length=47455>
+##contig=<ID=NODE_22_length_40668_cov_14.596117,length=40668>
+##contig=<ID=NODE_23_length_38242_cov_8.817136,length=38242>
+##contig=<ID=NODE_24_length_34935_cov_8.803632,length=34935>
+##contig=<ID=NODE_25_length_34709_cov_10.348319,length=34709>
+##contig=<ID=NODE_26_length_33102_cov_10.370235,length=33102>
+##contig=<ID=NODE_27_length_30278_cov_10.777093,length=30278>
+##contig=<ID=NODE_28_length_29500_cov_10.616457,length=29500>
+##contig=<ID=NODE_29_length_29467_cov_11.077952,length=29467>
+##contig=<ID=NODE_30_length_22830_cov_8.619962,length=22830>
+##contig=<ID=NODE_31_length_21151_cov_19.362247,length=21151>
+##contig=<ID=NODE_32_length_21058_cov_9.534865,length=21058>
+##contig=<ID=NODE_33_length_20817_cov_9.544696,length=20817>
+##contig=<ID=NODE_34_length_20253_cov_10.329253,length=20253>
+##contig=<ID=NODE_35_length_19845_cov_8.356081,length=19845>
+##contig=<ID=NODE_36_length_19448_cov_8.601311,length=19448>
+##contig=<ID=NODE_37_length_16637_cov_8.574034,length=16637>
+##contig=<ID=NODE_38_length_12460_cov_8.761043,length=12460>
+##contig=<ID=NODE_39_length_11996_cov_9.189362,length=11996>
+##contig=<ID=NODE_40_length_11190_cov_8.724647,length=11190>
+##contig=<ID=NODE_41_length_6647_cov_20.989498,length=6647>
+##contig=<ID=NODE_42_length_5861_cov_9.591286,length=5861>
+##contig=<ID=NODE_43_length_5498_cov_10.083379,length=5498>
+##contig=<ID=NODE_44_length_5066_cov_11.107035,length=5066>
+##contig=<ID=NODE_45_length_4078_cov_9.272682,length=4078>
+##contig=<ID=NODE_46_length_3496_cov_8.588184,length=3496>
+##contig=<ID=NODE_47_length_3280_cov_8.366219,length=3280>
+##contig=<ID=NODE_48_length_3090_cov_27.958181,length=3090>
+##contig=<ID=NODE_49_length_2950_cov_9.320919,length=2950>
+##contig=<ID=NODE_50_length_2608_cov_9.088503,length=2608>
+##contig=<ID=NODE_51_length_2519_cov_9.744062,length=2519>
+##contig=<ID=NODE_52_length_2214_cov_9.255030,length=2214>
+##contig=<ID=NODE_53_length_1882_cov_13.341274,length=1882>
+##contig=<ID=NODE_54_length_1659_cov_29.332491,length=1659>
+##contig=<ID=NODE_55_length_1501_cov_57.312500,length=1501>
+##contig=<ID=NODE_56_length_1105_cov_8.202335,length=1105>
+##contig=<ID=NODE_57_length_1007_cov_6.844086,length=1007>
+##contig=<ID=NODE_58_length_824_cov_4.875502,length=824>
+##contig=<ID=NODE_59_length_708_cov_7.657686,length=708>
+##contig=<ID=NODE_60_length_682_cov_6.588430,length=682>
+##contig=<ID=NODE_61_length_570_cov_15.713996,length=570>
+##contig=<ID=NODE_62_length_513_cov_23.066514,length=513>
+##contig=<ID=NODE_63_length_498_cov_23.161520,length=498>
+##contig=<ID=NODE_64_length_415_cov_7.426036,length=415>
+##contig=<ID=NODE_65_length_399_cov_20.484472,length=399>
+##contig=<ID=NODE_66_length_398_cov_9.713396,length=398>
+##contig=<ID=NODE_67_length_398_cov_6.834891,length=398>
+##contig=<ID=NODE_68_length_393_cov_3.363924,length=393>
+##contig=<ID=NODE_69_length_380_cov_15.752475,length=380>
+##contig=<ID=NODE_70_length_375_cov_11.503356,length=375>
+##contig=<ID=NODE_71_length_375_cov_6.553691,length=375>
+##contig=<ID=NODE_72_length_372_cov_26.274576,length=372>
+##contig=<ID=NODE_73_length_329_cov_9.464286,length=329>
+##contig=<ID=NODE_74_length_328_cov_17.721116,length=328>
+##contig=<ID=NODE_75_length_275_cov_18.767677,length=275>
+##contig=<ID=NODE_76_length_259_cov_6.115385,length=259>
+##contig=<ID=NODE_77_length_250_cov_8.606936,length=250>
+##contig=<ID=NODE_78_length_249_cov_9.645349,length=249>
+##contig=<ID=NODE_79_length_234_cov_19.955414,length=234>
+##contig=<ID=NODE_80_length_230_cov_10.947712,length=230>
+##contig=<ID=NODE_81_length_227_cov_13.946667,length=227>
+##contig=<ID=NODE_82_length_209_cov_36.643939,length=209>
+##contig=<ID=NODE_83_length_194_cov_13.239316,length=194>
+##contig=<ID=NODE_84_length_174_cov_13.711340,length=174>
+##contig=<ID=NODE_85_length_163_cov_12.918605,length=163>
+##contig=<ID=NODE_86_length_159_cov_8.902439,length=159>
+##contig=<ID=NODE_87_length_156_cov_6.531646,length=156>
+##contig=<ID=NODE_88_length_150_cov_11.972603,length=150>
+##contig=<ID=NODE_89_length_144_cov_51.701493,length=144>
+##contig=<ID=NODE_90_length_140_cov_11.396825,length=140>
+##contig=<ID=NODE_91_length_112_cov_14.342857,length=112>
+##contig=<ID=NODE_92_length_108_cov_33.548387,length=108>
+##contig=<ID=NODE_93_length_78_cov_124.000000,length=78>
+##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">
+##INFO=<ID=AD,Number=1,Type=Float,Description="Allele Depth (avg read count)">
+##INFO=<ID=DP,Number=1,Type=Float,Description="Total Depth (avg read count)">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+NODE_12_length_63515_cov_10.009553	425	.	G	T	56.6	PASS	AF=1.0000;AD=18;DP=18
+NODE_17_length_53225_cov_9.831847	4038	.	C	T	80.0	PASS	AF=1.0000;AD=25;DP=25
+NODE_17_length_53225_cov_9.831847	39508	.	C	T	51.8	PASS	AF=1.0000;AD=18;DP=18
+NODE_17_length_53225_cov_9.831847	47254	.	C	T	38.6	PASS	AF=1.0000;AD=16;DP=20
+NODE_18_length_51471_cov_10.179535	28893	.	G	A	61.3	PASS	AF=1.0000;AD=21;DP=23
+NODE_1_length_330110_cov_10.162872	238798	.	T	G	55.4	PASS	AF=1.0000;AD=16;DP=16
+NODE_26_length_33102_cov_10.370235	3028	.	G	A	51.4	PASS	AF=1.0000;AD=16;DP=17
+NODE_2_length_261439_cov_10.498405	18777	.	C	T	87.7	PASS	AF=1.0000;AD=26;DP=26
+NODE_4_length_173229_cov_8.684428	34041	.	C	T	43.8	PASS	AF=1.0000;AD=14;DP=14
+NODE_4_length_173229_cov_8.684428	108218	.	C	T	51.2	PASS	AF=1.0000;AD=17;DP=17
+NODE_6_length_146689_cov_9.273306	98462	.	G	GATTGTG	.	PASS	AF=1.0000;AD=17;DP=17.5
+NODE_6_length_146689_cov_9.273306	122177	.	T	A	17.3	PASS	AF=1.0000;AD=7;DP=7
+NODE_89_length_144_cov_51.701493	1	.	TTGTACATTGAAAACTAGATAAGTAAGTAAAATATAGATTTTACCAAGCAAAACCGAGTGAATAAAGAGTTTTAAATAAGCTTGAATTCATAAGAAATAATCGCTAGTGTTCGAAAGAACACTCACAAGATTAATAACGCGTTTT	T	.	PASS	AF=1.0000
+NODE_8_length_120051_cov_11.113541	16709	.	G	A	47.7	PASS	AF=1.0000;AD=15;DP=15
+NODE_91_length_112_cov_14.342857	1	.	GTTTCACTCGAATGTCAGTTCGAGGAATAAATAAAGTTAAACGAGAGCTAGGTTTTGTATTAATGGCACTTAATATAAGGAAAATAGCAGCTCAACGAGCTGTACATTATAAG	G	.	PASS	AF=1.0000
+NODE_93_length_78_cov_124.000000	1	.	GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG	G	.	PASS	AF=1.0000
