@@ -1,7 +1,8 @@
 # Load necessary data.
 setwd('~/Desktop/SequenceToMutations/')
 load(file = 'RdataFiles/ancestor_gbk_dataframes.Rdata') # all ancestor assmebly gene and gene product information
-load(file = 'RdataFiles/mutations_list.Rdata') # all evolved lineage mutations tables
+load(file = 'RdataFiles/mutations_list_VRSAc50.Rdata') # all evolved lineage mutations tables
+mutations_list <- mutations_list[1:2] # Just take VRSA-3 and -4
 
 # Get a vector of gene products that are present in all strains.
 gene_prods <- Reduce(intersect, sapply(gbkDF_list, '[[', 'GeneProduct'))
@@ -51,7 +52,7 @@ for (s in seq_along(strains)) { # Loop over strains
 
 sig_genes <- data.frame(sig_genes)
 
-num_lins <- 2 # Mine was actually 96 VAN-unexposed/exposed lineages each
+num_lins <- 48 # Mine was actually 96 VAN-unexposed/exposed lineages each in the full experiement. Here, I am only using 2 (out of 4) strains, so only 48 lineages.
 pvals <- oddsRs <- numeric(nrow(sig_genes))
 
 for (i in seq_len(nrow(sig_genes))) {
