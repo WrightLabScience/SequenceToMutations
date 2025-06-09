@@ -115,6 +115,8 @@ STEP 7: IDENTIFY_ENRICHED_MUTATIONS
 
 	b. The script `R_scripts/007_IdentifySigGenes.R` looks through the mutations in all the lineages in each group (e.g., VAN-exposed and VAN-unexposed) and counts the number lineages in each group that has any mutation in each gene. It then "scores" each gene according to how enriched each group is in mutations in that gene. To visualize this, two plots are made: i) an X-Y scatter plot showing the proportion of each group that had a mutation in that gene (`mutsXY()`) and ii) a volcano plot showing statistical significance vs. effect size (`volcano()`).
 
+	c. The script `R_scripts/007_PlotSigGenes.R` is specific to Sam's VRSA work. It produces a plot like Fig. 4 from his PLOS Pathogens paper. That is, it shows the mutations in ddl and surrounding genes across strains, media, and VAN exposed/unexposed groups. Extensive modifications would need to be made to this scipt to produce a similar plot for a different region of the genome. The code is garbage and ought to be completely refactored, but it's a starting point.
+
 2. Inputs: `RdataFiles/mutations_list.Rdata` and `RdataFiles/ancestor_gbk_dataframes.Rdata`.
 
 3. Outputs: Two plots showing enriched mutations. You could also save the `data.frame` called `sig_genes` that gets created in `R_scripts/007_IdentifySigGenes.R`.
